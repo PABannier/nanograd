@@ -2,36 +2,10 @@ from tensor import Tensor
 from autograd_engine import *
 from nn.functional import *
 
-import numpy as np
 import torch
+import numpy as np
 
-# ***** Helper functions *****
-
-def check_val(nano_tensor, torch_tensor):
-    assert np.allclose(nano_tensor.data, torch_tensor.data.numpy())
-
-def check_grad(nano_tensor, torch_tensor):
-    if nano_tensor.grad is not None and torch_tensor.grad is not None:
-        assert np.allclose(nano_tensor.grad.data, torch_tensor.grad.numpy(), atol=1e-3)
-    elif nano_tensor.grad is not None and torch_tensor.grad is None:
-        raise Exception("NanoTensor is not None, while torchtensor is None")
-    elif nano_tensor.grad is None and torch_tensor.grad is not None:
-        raise Exception("NanoTensor is None, while torchtensor is not None")
-    else:
-        pass
-
-def check_val_and_grad(nano_tensor, torch_tensor):
-    check_val(nano_tensor, torch_tensor)
-    check_grad(nano_tensor, torch_tensor)
-
-def create_identical_torch_tensor(*args):
-    torch_tensors = []
-    for arg in args:
-        t = torch.tensor(arg.data.astype(np.float32), requires_grad=arg.requires_grad)
-        torch_tensors.append(t)
-    return tuple(torch_tensors) if len(torch_tensors) > 1 else torch_tensors[0]
-
-# ***** Tests *****
+from utils import check_val_and_grad, create_identical_torch_tensor
 
 def test_add():
     a = Tensor(1, requires_grad=True)
@@ -235,6 +209,45 @@ def test_relu():
 
     b.backward()
     b_torch.sum().backward()
+
+    check_val_and_grad(a, a_torch)
+    check_val_and_grad(b, b_torch)
+
+def test_log():
+    a = Tensor.normal(30, 1, (5, 5), requires_grad=True)
+    a_torch = create_identical_torch_tensor(a)
+
+    b = a.log()
+    b_torch = a_torch.log()
+
+    b.backward()
+    b_torch.sum().backward()
+
+    check_val_and_grad(a, a_torch)
+    check_val_and_grad(b, b_torch)
+
+def test_exp():
+    a = Tensor.normal(30, 1, (5, 5), requires_grad=True)
+    a_torch = create_identical_torch_tensor(a)
+
+    b = a.log()
+    b_torch = a_torch.log()
+
+    b.backward()
+    b_torch.sum().backward()
+
+    check_val_and_grad(a, a_torch)
+    check_val_and_grad(b, b_torch)
+
+def test_sqrt():
+    a = Tensor.normal(30, 1, (5, 5), requires_grad=True)
+    a_torch = create_identical_torch_tensor(a)
+    
+    b = a.sqrt()
+    b_torch = a_torch.sqrt()
+
+    b_torch.sum().backward()
+    b.backward()
 
     check_val_and_grad(a, a_torch)
     check_val_and_grad(b, b_torch)

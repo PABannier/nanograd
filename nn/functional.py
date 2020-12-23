@@ -60,7 +60,41 @@ class Log(Function):
     @staticmethod
     def backward(ctx, grad_output):
         a = ctx.saved_tensors[0]
-        return tensor.Tensor(grad_output.data / a.data)
+        return tensor.Tensor(grad_output.data / a.data), None
+    
+class Exp(Function):
+    @staticmethod
+    def forward(ctx, a):
+        if not type(a).__name__ == "Tensor":
+            raise Exception("Arg for Exp must be tensor: {}".format(type(a).__name__))
+            
+        ctx.save_for_backward(a)
+        requires_grad = a.requires_grad
+        b = tensor.Tensor(np.exp(a.data), requires_grad=requires_grad, is_leaf=not requires_grad)
+        return b
+    
+    @staticmethod
+    def backward(ctx, grad_output):
+        a = ctx.saved_tensors[0]
+        grad_a = grad_output.data * np.exp(a.data)
+        return tensor.Tensor(grad_a), None
+
+class Sqrt(Function):
+    @staticmethod
+    def forward(ctx, a):
+        if not type(a).__name__ == "Tensor":
+            raise Exception("Arg for Sqrt must be tensor: {}".format(type(a).__name__))
+
+        ctx.save_for_backward(a)
+        requires_grad = a.requires_grad
+        b = tensor.Tensor(np.sqrt(a.data), requires_grad=requires_grad, is_leaf=not requires_grad)
+        return b
+    
+    @staticmethod
+    def backward(ctx, grad_output):
+        a = ctx.saved_tensors[0]
+        grad_a = np.divide(grad_output.data, 2 * np.sqrt(a.data))
+        return tensor.Tensor(grad_a), None
 
 class Add(Function):
     @staticmethod
@@ -284,15 +318,14 @@ def cross_entropy(predicted, target):
         Tensor: the loss as a float, in a tensor of shape ()
     """
     batch_size, num_classes = predicted.shape
+    labels = to_one_hot(target, num_classes)
 
-    # Tip: You can implement XELoss all here, without creating a new subclass of Function.
-    #      However, if you'd prefer to implement a Function subclass you're free to.
-    #      Just be sure that nn.loss.CrossEntropyLoss calls it properly.
+    a = tensor.Tensor(np.amax(predicted.data, axis=1)).reshape((batch_size, 1))
+    log_softmax = predicted - a - tensor.Tensor.sum((predicted - a).exp(), axis=1).log().reshape((batch_size, 1))
 
-    # Tip 2: Remember to divide the loss by batch_size; this is equivalent
-    #        to reduction='mean' in PyTorch's nn.CrossEntropyLoss
+    nll_loss = tensor.Tensor.sum(log_softmax * labels) / tensor.Tensor(-batch_size)
 
-    raise Exception("TODO: Implement XELoss for comp graph")
+    return nll_loss
 
 def to_one_hot(arr, num_classes):
     """(Freebie) Converts a tensor of classes to one-hot, useful in XELoss

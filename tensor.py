@@ -100,6 +100,12 @@ class Tensor:
     def log(self):
         return F.Log.apply(self)
     
+    def exp(self):
+        return F.Exp.apply(self)
+
+    def sqrt(self):
+        return F.Sqrt.apply(self)
+    
     def reshape(self, shape):
         return F.Reshape.apply(self, shape)
     
@@ -124,6 +130,14 @@ class Tensor:
     @classmethod
     def randn(cls, *shape, **kwargs):
         return cls(np.random.randn(*shape), **kwargs)
+    
+    @classmethod
+    def normal(cls, loc, scale, *shape, **kwargs):
+        return cls(np.random.normal(loc, scale, *shape), **kwargs)
+
+    @classmethod
+    def randint(cls, low, high, *shape, **kwargs):
+        return cls(np.random.randint(low, high, *shape), **kwargs)
     
     @classmethod
     def eye(cls, dim, **kwargs):

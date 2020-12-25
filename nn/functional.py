@@ -14,6 +14,11 @@ def unbroadcast(grad, shape, to_keep=0):
             grad = grad.sum(axis=i, keepdims=True)
     return grad
 
+
+def sigmoid(x):
+    return 1 / (1 + np.exp(-x))
+
+
 class Transpose(Function):
     @staticmethod
     def forward(ctx, a):
@@ -28,6 +33,7 @@ class Transpose(Function):
     @staticmethod
     def backward(ctx, grad_output):
         return tensor.Tensor(grad_output.data.T), None
+
 
 class Reshape(Function):
     @staticmethod
@@ -44,6 +50,7 @@ class Reshape(Function):
     @staticmethod
     def backward(ctx, grad_output):
         return tensor.Tensor(grad_output.data.reshape(ctx.shape)), None
+
 
 class Log(Function):
     @staticmethod
@@ -62,6 +69,7 @@ class Log(Function):
         a = ctx.saved_tensors[0]
         return tensor.Tensor(grad_output.data / a.data), None
     
+
 class Exp(Function):
     @staticmethod
     def forward(ctx, a):
@@ -80,6 +88,7 @@ class Exp(Function):
         grad_a = grad_output.data * np.exp(a.data)
         return tensor.Tensor(grad_a), None
 
+
 class Sqrt(Function):
     @staticmethod
     def forward(ctx, a):
@@ -97,6 +106,7 @@ class Sqrt(Function):
         a = ctx.saved_tensors[0]
         grad_a = np.divide(grad_output.data, 2 * np.sqrt(a.data))
         return tensor.Tensor(grad_a), None
+
 
 class Add(Function):
     @staticmethod
@@ -122,6 +132,7 @@ class Add(Function):
 
         return grad_a, grad_b
 
+
 class Sub(Function):
     @staticmethod
     def forward(ctx, a, b):
@@ -145,6 +156,7 @@ class Sub(Function):
         grad_b = tensor.Tensor(unbroadcast(grad_b, b.shape))
 
         return grad_a, grad_b
+
 
 class Sum(Function):
     @staticmethod
@@ -178,6 +190,7 @@ class Sum(Function):
 
         return tensor.Tensor(grad), None, None
 
+
 class Neg(Function):
     @staticmethod
     def forward(ctx, a):
@@ -191,6 +204,7 @@ class Neg(Function):
     @staticmethod
     def backward(ctx, grad_output):
         return tensor.Tensor(-grad_output.data), None
+
 
 class MatMul(Function):
     @staticmethod
@@ -220,6 +234,7 @@ class MatMul(Function):
 
         return grad_a, grad_b
 
+
 class Pow(Function):
     @staticmethod
     def forward(ctx, a, exp):
@@ -244,6 +259,7 @@ class Pow(Function):
         grad_a = tensor.Tensor(grad_a)
 
         return grad_a, None
+
 
 class Mul(Function):
     @staticmethod
@@ -270,6 +286,7 @@ class Mul(Function):
 
         return grad_a, grad_b
 
+
 class Div(Function):
     @staticmethod
     def forward(ctx, a, b):
@@ -295,6 +312,7 @@ class Div(Function):
 
         return grad_a, grad_b
 
+
 class ReLU(Function):
     @staticmethod
     def forward(ctx, a):
@@ -304,7 +322,7 @@ class ReLU(Function):
         ctx.save_for_backward(a)
 
         c = tensor.Tensor(np.maximum(a.data, 0), requires_grad=a.requires_grad, \
-                                                     is_leaf=not a.requires_grad)
+                                                 is_leaf=not a.requires_grad)
         return c
     
     @staticmethod
@@ -313,6 +331,46 @@ class ReLU(Function):
         grad_a = grad_output.data * (a.data >= 0)
 
         return tensor.Tensor(grad_a), None
+
+
+class Sigmoid(Function):
+    @staticmethod
+    def forward(ctx, a):
+        if not type(a).__name__ == "Tensor":
+            raise Exception("Sigmoid can only be applied to tensors")
+
+        ctx.save_for_backward(a)
+
+        c = tensor.Tensor(sigmoid(a.data), requires_grad=a.requires_grad, \
+                                           is_leaf=not a.requires_grad)
+        return c
+    
+    @staticmethod
+    def backward(ctx, grad_output):
+        a = ctx.saved_tensors[0]
+        grad_a = grad_output.data * sigmoid(a.data) * (1 - sigmoid(a.data))
+        return tensor.Tensor(grad_a), None
+
+
+class Tanh(Function):
+    @staticmethod
+    def forward(ctx, a):
+        if not type(a).__name__ == "Tensor":
+            raise Exception("Tanh can only be applied to tensors")
+
+        ctx.save_for_backward(a)
+
+        c = tensor.Tensor(np.tanh(a.data), requires_grad=a.requires_grad, \
+                                           is_leaf=not a.requires_grad)
+        return c
+    
+    @staticmethod
+    def backward(ctx, grad_output):
+        a = ctx.saved_tensors[0]
+        grad_a = grad_output.data * (1 - np.power(np.tanh(a.data), 2))
+        return tensor.Tensor(grad_a), None
+
+
 
 def cross_entropy(predicted, target):
     """Calculates Cross Entropy Loss (XELoss) between logits and true labels.

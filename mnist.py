@@ -124,12 +124,12 @@ if __name__ == "__main__":
     # Visualization
     fig, axes = plt.subplots(1, 2, figsize=(12, 8))
 
-    axes[0].plot(trn_losses, 'b-', label="Train loss")
-    axes[0].plot(val_losses, 'r-', label="Valid loss")
+    axes[0].plot(trn_losses, 'b-', label="Train")
+    axes[0].plot(val_losses, 'r-', label="Valid")
     axes[0].set_title("Loss", fontweight="bold", fontsize=13)
 
-    axes[1].plot(trn_accuracies, 'b-', label="Train accuracy")
-    axes[1].plot(val_accuracies, 'r-', label="Valid accuracy")
+    axes[1].plot(trn_accuracies, 'b-', label="Train")
+    axes[1].plot(val_accuracies, 'r-', label="Valid")
     axes[1].set_title("Accuracy", fontweight="bold", fontsize=13)
 
     fig.suptitle("Training report", fontweight="bold", fontsize=20)

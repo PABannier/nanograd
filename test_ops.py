@@ -226,6 +226,34 @@ def test_relu():
     check_val_and_grad(b, b_torch)
 
 
+def test_sigmoid(): 
+    a = Tensor.randn(20, 20, requires_grad=True)
+    a_torch = create_identical_torch_tensor(a)
+
+    b = a.sigmoid()
+    b_torch = a_torch.sigmoid()
+
+    b.backward()
+    b_torch.sum().backward()
+
+    check_val_and_grad(a, a_torch)
+    check_val_and_grad(b, b_torch)
+
+
+def test_tanh():
+    a = Tensor.randn(20, 20, requires_grad=True)
+    a_torch = create_identical_torch_tensor(a)
+
+    b = a.tanh()
+    b_torch = a_torch.tanh()
+
+    b.backward()
+    b_torch.sum().backward()
+
+    check_val_and_grad(a, a_torch)
+    check_val_and_grad(b, b_torch)
+
+
 def test_log():
     a = Tensor.normal(30, 1, (5, 5), requires_grad=True)
     a_torch = create_identical_torch_tensor(a)

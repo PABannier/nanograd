@@ -116,6 +116,12 @@ class Tensor:
     def relu(self):
         return F.ReLU.apply(self)
     
+    def sigmoid(self):
+        return F.Sigmoid.apply(self)
+
+    def tanh(self):
+        return F.Tanh.apply(self)
+    
     @classmethod
     def zeros(cls, *shape, **kwargs):
         return cls(np.zeros(*shape), **kwargs)

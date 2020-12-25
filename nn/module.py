@@ -1,4 +1,7 @@
-from nanograd.tensor import Tensor
+from tensor import Tensor
+import nn.functional as F
+
+import numpy as np
 
 class Module:
     r"""
@@ -165,7 +168,8 @@ class Linear(Module):
         Returns:
             Tensor: (batch_size, out_features)
         """
-        return x.__matmul__(self.weight.T()) + self.bias
+        
+        return x @ self.weight.T() + self.bias
 
 
 class BatchNorm1d(Module):
@@ -184,8 +188,8 @@ class BatchNorm1d(Module):
         super().__init__()
         self.num_features = num_features
 
-        self.eps = Tensor(np.array([eps]))
-        self.momentum = Tensor(np.array([momentum]))
+        self.eps = Tensor(eps)
+        self.momentum = Tensor(momentum)
 
         # To make the final output affine
         self.gamma = Tensor(np.ones((self.num_features,)), requires_grad=True, is_parameter=True)
@@ -203,17 +207,40 @@ class BatchNorm1d(Module):
                 Tensor: (batch_size, num_features)
         """
         if self.is_train == True:
-            # Normalizing the input
-            mu = x.sum(axis=0) / Tensor(x.shape[0])
-            var = (x - mu).pow(2).sum(axis=0) / Tensor(x.shape[0]-1)
-            x_hat = (x - mu) / (var + self.eps).sqrt()
+            batch_mean = x.mean(0)
+            batch_var = ((x - batch_mean) ** 2).mean(0)
+            batch_empirical_var = ((x - batch_mean) ** 2).sum(0) / Tensor(x.shape[0] - 1)
 
-            # Keeping track of the running means and variances
-            sigma2 = (x - mu).pow(2).sum(axis=0) / Tensor(x.shape[0]-1)
-            self.running_mean = (Tensor(1) - self.momentum) * self.running_mean + self.momentum * mu
-            self.running_var = (Tensor(1) - self.momentum) * self.running_var + self.momentum * sigma2
+            self.running_mean = (Tensor(1) - self.momentum) * self.running_mean + self.momentum * batch_mean
+            self.running_var = (Tensor(1) - self.momentum) * self.running_var + self.momentum * batch_empirical_var
 
-            return self.gamma * x_hat + self.beta
+            return self._normalize(x, batch_mean, batch_var)
         else:
-            x_hat = (x - self.running_mean) / (self.running_var + self.eps).sqrt()
-            return self.gamma * x_hat + self.beta
+            return self._normalize(x, self.running_mean, self.running_var)
+        
+    def _normalize(self, x, mean, var):
+        x_hat = (x - mean) / (var + self.eps).sqrt()
+        return self.gamma * x_hat + self.beta
+
+
+class ReLU(Module):
+    """
+        ReLU Activation Layer
+
+        Applies a Rectified Linear Unit activation function to 
+        the input
+
+        Inherits from:
+            Module (mytorch.nn.module.Module)
+    """
+    def __init__(self):
+        super().__init__()
+    
+    def forward(self, x):
+        """
+            Args:
+                x (Tensor): (batch_size, num_features)
+            Returns:
+                Tensor: (batch_size, num_features)
+        """
+        return F.ReLU.apply(x)

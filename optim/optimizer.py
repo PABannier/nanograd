@@ -1,4 +1,5 @@
 import numpy as np
+from tensor import Tensor
 
 class Optimizer:
     r"""
@@ -45,4 +46,4 @@ class SGD(Optimizer):
         r"""SGD update rule"""
         for param, mom in zip(self.params, self.momentums):
             mom.data = mom.data  * self.momentum + self.lr * param.grad.data
-            param.data -= mom.data
+            param.data -= mom.data        

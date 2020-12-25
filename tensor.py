@@ -37,13 +37,9 @@ class Tensor:
         self.data = np.array(data)
 
         self.is_parameter = is_parameter
-
-        if self.is_parameter:
-            self.requires_grad = True
-            self.is_leaf = True
-        else:
-            self.requires_grad = requires_grad
-            self.is_leaf = is_leaf
+        self.requires_grad = requires_grad
+        self.is_leaf = is_leaf
+        self.is_parameter = is_parameter
         
         self.grad = None 
         self.grad_fn = None
@@ -68,7 +64,7 @@ class Tensor:
     
     def __str__(self):
         return f"NanoTensor({str(self.data)}, " + \
-               f"grad_fn= {self.grad_fn.__class__.__name__  if self.grad_fn else None})"
+               f"grad_fn={self.grad_fn.__class__.__name__  if self.grad_fn else None})"
     
     def __repr__(self):
         return self.__str__()
@@ -96,6 +92,11 @@ class Tensor:
     
     def sum(self, axis=None, keepdims=False):
         return F.Sum.apply(self, axis, keepdims)
+    
+    def mean(self, axis=None, keepdims=False):
+        out = self.sum(axis=axis)
+        coeff = np.prod(out.shape) / np.prod(self.shape)
+        return out * Tensor(coeff)
     
     def log(self):
         return F.Log.apply(self)

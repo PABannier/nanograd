@@ -1,6 +1,6 @@
 import numpy as np
 import tensor
-from nanograd.autograd_engine import Function
+from autograd_engine import Function
 
 
 def unbroadcast(grad, shape, to_keep=0):
@@ -70,7 +70,8 @@ class Exp(Function):
             
         ctx.save_for_backward(a)
         requires_grad = a.requires_grad
-        b = tensor.Tensor(np.exp(a.data), requires_grad=requires_grad, is_leaf=not requires_grad)
+        b = tensor.Tensor(np.exp(a.data), requires_grad=requires_grad, 
+                                          is_leaf=not requires_grad)
         return b
     
     @staticmethod
@@ -87,7 +88,8 @@ class Sqrt(Function):
 
         ctx.save_for_backward(a)
         requires_grad = a.requires_grad
-        b = tensor.Tensor(np.sqrt(a.data), requires_grad=requires_grad, is_leaf=not requires_grad)
+        b = tensor.Tensor(np.sqrt(a.data), requires_grad=requires_grad, 
+                                           is_leaf=not requires_grad)
         return b
     
     @staticmethod
@@ -104,7 +106,8 @@ class Add(Function):
 
         ctx.save_for_backward(a, b)
         requires_grad = a.requires_grad or b.requires_grad
-        c = tensor.Tensor(a.data + b.data, requires_grad=requires_grad, is_leaf=not requires_grad)
+        c = tensor.Tensor(a.data + b.data, requires_grad=requires_grad, 
+                                           is_leaf=not requires_grad)
         return c
 
     @staticmethod
@@ -212,6 +215,9 @@ class MatMul(Function):
         grad_a = np.matmul(grad_output.data, np.transpose(b.data))
         grad_b = np.matmul(np.transpose(a.data), grad_output.data)
 
+        grad_a = tensor.Tensor(grad_a)
+        grad_b = tensor.Tensor(grad_b)
+
         return grad_a, grad_b
 
 class Pow(Function):
@@ -234,6 +240,8 @@ class Pow(Function):
         a = ctx.saved_tensors[0]
 
         grad_a = exp * (a.data ** (exp-1)) * grad_output.data
+
+        grad_a = tensor.Tensor(grad_a)
 
         return grad_a, None
 
@@ -295,14 +303,14 @@ class ReLU(Function):
 
         ctx.save_for_backward(a)
 
-        c = tensor.Tensor(np.clip(a.data, 0, None), requires_grad=a.requires_grad, \
+        c = tensor.Tensor(np.maximum(a.data, 0), requires_grad=a.requires_grad, \
                                                      is_leaf=not a.requires_grad)
         return c
     
     @staticmethod
     def backward(ctx, grad_output):
         a = ctx.saved_tensors[0]
-        grad_a = np.heaviside(a.data, 0)
+        grad_a = grad_output.data * (a.data >= 0)
 
         return tensor.Tensor(grad_a), None
 
@@ -347,5 +355,5 @@ def to_one_hot(arr, num_classes):
     arr = arr.data.astype(int)
     a = np.zeros((arr.shape[0], num_classes))
     a[np.arange(len(a)), arr] = 1
-    return tensor.Tensor(a, requires_grad = True)
+    return tensor.Tensor(a, requires_grad=True)
 

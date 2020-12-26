@@ -462,11 +462,8 @@ class Conv1d(Function):
         out = tensor.Tensor(out, requires_grad=x.requires_grad,
                                  is_leaf=not x.requires_grad)
 
-        for channel in range(out_channel):
+        #for channel in range(out_channel):
             
-
-
-
         return out
     
     @staticmethod

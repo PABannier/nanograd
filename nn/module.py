@@ -261,7 +261,7 @@ class Sigmoid(Module):
     def __init__(self):
         super().__init__()
     
-    def forward(self, x)
+    def forward(self, x):
         """
             Args:
                 x (Tensor): (batch_size, num_features)
@@ -283,7 +283,7 @@ class Tanh(Module):
     def __init__(self):
         super().__init__()
     
-    def forward(self, x)
+    def forward(self, x):
         """
             Args:
                 x (Tensor): (batch_size, num_features)

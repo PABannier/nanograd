@@ -35,9 +35,10 @@ Inspirations: nanograd was initially inspired by [geohot's tinygrad](https://git
 
 ## Features
 
+- Improve comments and documentation
 - PyTorch-like autodifferentiation engine (dynamically constructed computational graph)
 - Activations: ReLU, Sigmoid, tanh
-- Optimizer: SGD
+- Optimizers: SGD, Adam
 - Loss: CrossEntropyLoss
 - Conv1d
 - Fully-working example with MNIST (96% validation accuracy)
@@ -45,7 +46,7 @@ Inspirations: nanograd was initially inspired by [geohot's tinygrad](https://git
 
 ## TODO
 
-- Optimizers: RMSProp, Adagrad, Adam, AdamW
+- Optimizers: Adagrad, AdamW
 - Convolutions: Conv1D, Conv2D, Flatten, MaxPool and AveragePooling
 - Resblocks
 - Attention mechanism for computer vision (CBAM), Transformer...

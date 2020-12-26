@@ -22,13 +22,11 @@
 
 ## Description
 
-After verification, nanograd is not quite a city in Russia...
+After verification, nanograd is not a city in Russia...
 
 However, it is a lightweight deep learning framework you should use for learning purposes.
 
-The main objective is to be able to implement any DL algo or model you want with as little boilerplate code as possible.
-
-The second objective is to create built-in visualization tools to better understand how a deep neural network trains (especially backprop).
+The main objective is to implement any DL algo or model you want with as little boilerplate code as possible. The second objective is to create built-in visualization tools to better understand how a deep neural network trains (especially backprop).
 
 The repo will be updated regularly with new features and examples.
 

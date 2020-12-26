@@ -223,15 +223,18 @@ class BatchNorm1d(Module):
         return self.gamma * x_hat + self.beta
 
 
+# ***** Activation functions *****
+
+
 class ReLU(Module):
-    """
+    r"""
         ReLU Activation Layer
 
         Applies a Rectified Linear Unit activation function to 
         the input
 
         Inherits from:
-            Module (mytorch.nn.module.Module)
+            Module (nn.module.Module)
     """
     def __init__(self):
         super().__init__()
@@ -244,3 +247,47 @@ class ReLU(Module):
                 Tensor: (batch_size, num_features)
         """
         return F.ReLU.apply(x)
+
+
+class Sigmoid(Module):
+    r"""
+        Sigmoid Activation Layer
+
+        Applies a Sigmoid activation function to the input
+
+        Inherits from:
+            Module (nn.module.Modue)
+    """
+    def __init__(self):
+        super().__init__()
+    
+    def forward(self, x)
+        """
+            Args:
+                x (Tensor): (batch_size, num_features)
+            Returns:
+                Tensor: (batch_size, num_features)
+        """
+        return F.Sigmoid.apply(x)
+
+
+class Tanh(Module):
+    r"""
+        Tanh Activation Layer
+
+        Applies a Hyperbolic Tangent activation function to the input
+
+        Inherits from:
+            Module (nn.module.Modue)
+    """
+    def __init__(self):
+        super().__init__()
+    
+    def forward(self, x)
+        """
+            Args:
+                x (Tensor): (batch_size, num_features)
+            Returns:
+                Tensor: (batch_size, num_features)
+        """
+        return F.Tanh.apply(x)

@@ -9,6 +9,7 @@ import numpy as np
 from tqdm import tqdm
 from utils import load_mnist
     
+
 def _train_one_epoch(X_train, Y_train, model, optimizer, criterion, batch_size):
     model.train()
     batch_losses = []
@@ -40,7 +41,8 @@ def _train_one_epoch(X_train, Y_train, model, optimizer, criterion, batch_size):
         batch_losses.append(float(loss.data))
     
     return np.mean(batch_losses), num_correct / Y_train.shape[0]
-            
+
+
 def _valid_one_epoch(X_valid, Y_valid, model, criterion, batch_size=64):
     model.eval()
     batch_losses = [] 
@@ -68,6 +70,7 @@ def _valid_one_epoch(X_valid, Y_valid, model, criterion, batch_size=64):
     
     return np.mean(batch_losses), num_correct / Y_valid.shape[0] 
 
+
 def training_loop(X_train, Y_train, X_valid, Y_valid, 
                   model, optimizer, criterion, num_epochs=30, batch_size=64):
     trn_losses, val_losses = [], []
@@ -85,6 +88,7 @@ def training_loop(X_train, Y_train, X_valid, Y_valid,
         val_accuracies.append(val_acc)
 
     return trn_losses, val_losses, trn_accuracies, val_accuracies       
+
 
 if __name__ == "__main__":
     # Loading data

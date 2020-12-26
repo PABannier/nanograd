@@ -19,6 +19,68 @@ def sigmoid(x):
     return 1 / (1 + np.exp(-x))
 
 
+def cross_entropy(predicted, target):
+    """Calculates Cross Entropy Loss (XELoss) between logits and true labels.
+    For MNIST, don't call this function directly; use nn.loss.CrossEntropyLoss instead.
+
+    Args:
+        predicted (Tensor): (batch_size, num_classes) logits
+        target (Tensor): (batch_size,) true labels
+
+    Returns:
+        Tensor: the loss as a float, in a tensor of shape ()
+    """
+    batch_size, num_classes = predicted.shape
+    labels = to_one_hot(target, num_classes)
+
+    a = tensor.Tensor(np.amax(predicted.data, axis=1)).reshape((batch_size, 1))
+    log_softmax = predicted - a - tensor.Tensor.sum((predicted - a).exp(), axis=1).log().reshape((batch_size, 1))
+
+    nll_loss = tensor.Tensor.sum(log_softmax * labels) / tensor.Tensor(-batch_size)
+
+    return nll_loss
+
+
+def to_one_hot(arr, num_classes):
+    """(Freebie) Converts a tensor of classes to one-hot, useful in XELoss
+
+    Example:
+    >>> to_one_hot(Tensor(np.array([1, 2, 0, 0])), 3)
+    [[0, 1, 0],
+     [0, 0, 1],
+     [1, 0, 0],
+     [1, 0, 0]]
+
+    Args:
+        arr (Tensor): Condensed tensor of label indices
+        num_classes (int): Number of possible classes in dataset
+                           For instance, MNIST would have `num_classes==10`
+    Returns:
+        Tensor: one-hot tensor
+    """
+    arr = arr.data.astype(int)
+    a = np.zeros((arr.shape[0], num_classes))
+    a[np.arange(len(a)), arr] = 1
+    return tensor.Tensor(a, requires_grad=True)
+
+
+def get_conv1d_output_size(input_size, kernel_size, stride):
+    r"""
+        Gets the size of a Conv1d output.
+
+        # TODO: IMPLEMENT PADDING AND DILATION
+
+        Args:
+            input_size (int): Size of the input to the layer
+            kernel_size (int): Size of the kernel
+            stride (int): Stride of the convolution
+
+        Returns:
+            int: size of the output as an int (not a Tensor or np.array)
+    """
+    return ((input_size - kernel_size) // stride) + 1
+
+
 class Transpose(Function):
     @staticmethod
     def forward(ctx, a):
@@ -371,47 +433,43 @@ class Tanh(Function):
         return tensor.Tensor(grad_a), None
 
 
+class Conv1d(Function):
+    @staticmethod
+    def forward(ctx, x, weight, bias, stride):
+        """
+            The forward/backward of a Conv1d Layer in the comp graph.
+            
+            Args:
+                x (Tensor): (batch_size, in_channel, input_size) input data
+                weight (Tensor): (out_channel, in_channel, kernel_size)
+                bias (Tensor): (out_channel,)
+                stride (int): Stride of the convolution
+            
+            Returns:
+                Tensor: (batch_size, out_channel, output_size) output data
+        """
+        batch_size, in_channel, input_size = x.shape
+        out_channel, _, kernel_size = weight.shape
+        
+        ctx.save_for_backward(x, weight, bias)
+        
+        output_size = get_conv1d_output_size(input_size, kernel_size, stride)
+        out = np.zeros((batch_size, out_channel, output_size))
+        
+        # TODO: Calculate the Conv1d output.
+        # Remember that we're working with np.arrays; no new operations needed.
+        
+        out = tensor.Tensor(out, requires_grad=x.requires_grad,
+                                 is_leaf=not x.requires_grad)
 
-def cross_entropy(predicted, target):
-    """Calculates Cross Entropy Loss (XELoss) between logits and true labels.
-    For MNIST, don't call this function directly; use nn.loss.CrossEntropyLoss instead.
+        for channel in range(out_channel):
+            
 
-    Args:
-        predicted (Tensor): (batch_size, num_classes) logits
-        target (Tensor): (batch_size,) true labels
 
-    Returns:
-        Tensor: the loss as a float, in a tensor of shape ()
-    """
-    batch_size, num_classes = predicted.shape
-    labels = to_one_hot(target, num_classes)
 
-    a = tensor.Tensor(np.amax(predicted.data, axis=1)).reshape((batch_size, 1))
-    log_softmax = predicted - a - tensor.Tensor.sum((predicted - a).exp(), axis=1).log().reshape((batch_size, 1))
-
-    nll_loss = tensor.Tensor.sum(log_softmax * labels) / tensor.Tensor(-batch_size)
-
-    return nll_loss
-
-def to_one_hot(arr, num_classes):
-    """(Freebie) Converts a tensor of classes to one-hot, useful in XELoss
-
-    Example:
-    >>> to_one_hot(Tensor(np.array([1, 2, 0, 0])), 3)
-    [[0, 1, 0],
-     [0, 0, 1],
-     [1, 0, 0],
-     [1, 0, 0]]
-
-    Args:
-        arr (Tensor): Condensed tensor of label indices
-        num_classes (int): Number of possible classes in dataset
-                           For instance, MNIST would have `num_classes==10`
-    Returns:
-        Tensor: one-hot tensor
-    """
-    arr = arr.data.astype(int)
-    a = np.zeros((arr.shape[0], num_classes))
-    a[np.arange(len(a)), arr] = 1
-    return tensor.Tensor(a, requires_grad=True)
-
+        return out
+    
+    @staticmethod
+    def backward(ctx, grad_output):
+        # TODO: Finish Conv1d backward pass. It's surprisingly similar to the forward pass.
+        raise NotImplementedError("Implement functional.Conv1d.backward()!")

@@ -1,6 +1,6 @@
 <h1 align="center">
   <br>
-  <a href="https://github.com/PABannier/nanograd"><img src="logo.png" alt="Nanograd" width="200"></a>
+  <a href="https://github.com/PABannier/nanograd"><img src="docs/logo.jpg" alt="Nanograd" width="200"></a>
   <br>
   nanograd
   <br>

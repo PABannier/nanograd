@@ -6,7 +6,7 @@
   <br>
 </h1>
 
-<h4 align="center">A lightweight deep learning framework for better visualization.</h4>
+<h4 align="center">A lightweight deep learning framework.</h4>
 
 <p align="center">
   <img src="docs/badge.svg">

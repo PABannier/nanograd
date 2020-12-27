@@ -1,6 +1,6 @@
 from nn.module import Sequential, Linear, BatchNorm1d, ReLU
 from nn.loss import CrossEntropyLoss
-from optim.optimizer import SGD, Adam
+from optim.optimizer import SGD, Adam, AdamW
 from tensor import Tensor
 
 import matplotlib.pyplot as plt
@@ -110,8 +110,7 @@ if __name__ == "__main__":
         Linear(20, 10)
     )
 
-    #optimizer = SGD(BobNet.parameters(), lr=0.1)
-    optimizer = Adam(BobNet.parameters())
+    optimizer = AdamW(BobNet.parameters(), lr=0.01)
     criterion = CrossEntropyLoss()
 
     trn_losses, val_losses, trn_accuracies, val_accuracies = training_loop(

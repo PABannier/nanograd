@@ -35,24 +35,24 @@ Inspirations: nanograd was initially inspired by [geohot's tinygrad](https://git
 
 ## Features
 
-- Improve comments and documentation
 - PyTorch-like autodifferentiation engine (dynamically constructed computational graph)
 - Activations: ReLU, Sigmoid, tanh
-- Optimizers: SGD, Adam
+- Optimizers: SGD, Adam, AdamW
+- Weight initialization: Glorot uniform, Glorot normal, Kaiming uniform, Kaiming normal
 - Loss: CrossEntropyLoss
-- Conv1d
 - Fully-working example with MNIST (96% validation accuracy)
 
 
 ## TODO
 
-- Optimizers: Adagrad, AdamW
+- Improve comments and documentation
+- Cython support for CPU (maybe ???)
+- GPU support
 - Convolutions: Conv1D, Conv2D, Flatten, MaxPool and AveragePooling
 - Resblocks
 - Attention mechanism for computer vision (CBAM), Transformer...
-- GPU support
-- Cython support for CPU (maybe ???)
 - Visualization tool
+- Schedulers: Warmup, Cosine Annealing, 
 - Interpretability tools: GradCAM, ...
 
 

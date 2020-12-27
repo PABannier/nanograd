@@ -145,18 +145,17 @@ class Linear(Module):
         Inherits from:
             Module (mytorch.nn.module.Module)
     """
-    def __init__(self, in_features, out_features):
+    def __init__(self, in_features, out_features, 
+                 weight_initialization="kaiming_normal", fan_mode="fan_in"):
         super().__init__()
 
         self.in_features = in_features
         self.out_features = out_features
 
-        # Randomly initializing layer weights
-        k = 1 / in_features
-        weight = k * (np.random.rand(out_features, in_features) - 0.5)
-        bias = k * (np.random.rand(out_features) - 0.5)
-        self.weight = Tensor(weight, requires_grad=True, is_parameter=True)
-        self.bias = Tensor(bias, requires_grad=True, is_parameter=True)
+        self.weight_initialization = weight_initialization
+        self.fan_mode = fan_mode
+
+        self._initialize_parameters()
 
     def __call__(self, x):
         return self.forward(x)
@@ -170,6 +169,31 @@ class Linear(Module):
         """
         
         return x @ self.weight.T() + self.bias
+    
+    def _initialize_parameters(self):
+        assert self.fan_mode in ("fan_in", "fan_out"), "Wrong fan mode. Only fan_in and fan_out supported."
+
+        if self.weight_initialization == "kaiming_normal":
+            std = np.sqrt(1 / self.in_features) if self.fan_mode == "fan_in" else np.sqrt(1.0 / self.out_features)
+            weight = np.random.normal(0.0, std, (self.out_features, self.in_features))
+
+        elif self.weight_initialization == "kaiming_uniform":
+            bound = np.sqrt(3 / self.in_features) if self.fan_mode == "fan_in" else np.sqrt(3.0 / self.out_features)
+            weight = np.random.uniform(-bound, bound, (self.out_features, self.in_features))
+        
+        elif self.weight_initialization == "glorot_normal":
+            std = np.sqrt(2.0 / (self.in_features + self.out_features))
+            weight = np.random.normal(0.0, std, (self.out_features, self.in_features))
+
+        elif self.weight_initialization == "glorot_uniform":
+            bound = np.sqrt(6.0 / (self.in_features + self.out_features))
+            weight = np.random.uniform(-bound, bound, (self.out_features, self.in_features)) 
+
+        else:
+            raise Exception("Unknown weight initialization methods. Only Glorot and Kaiming are available.")
+        
+        self.weight = Tensor(weight, requires_grad=True, is_parameter=True)
+        self.bias = Tensor.zeros(self.out_features, requires_grad=True, is_parameter=True)
 
 
 class BatchNorm1d(Module):

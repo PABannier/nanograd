@@ -5,7 +5,7 @@ import torch.nn as nn
 from torch.autograd import Variable
 
 from tensor import Tensor
-from nn.module import BatchNorm1d, Linear, ReLU, Sequential
+from nn.module import BatchNorm1d, BatchNorm2d, Linear, ReLU, Sequential, Conv1d, Conv2d, MaxPool2d, Flatten
 from nn.loss import CrossEntropyLoss
 from optim.optimizer import SGD
 
@@ -29,8 +29,8 @@ def load_mnist():
     return tuple(mnist)
 
 
-def check_val(nano_tensor, torch_tensor):
-    assert np.allclose(nano_tensor.data, torch_tensor.data.numpy())
+def check_val(nano_tensor, torch_tensor, atol=1e-5):
+    assert np.allclose(nano_tensor.data, torch_tensor.data.numpy(), atol=atol)
 
 
 def check_grad(nano_tensor, torch_tensor):
@@ -100,13 +100,42 @@ def get_same_pytorch_mlp(model):
             layers[-1].weight = nn.Parameter(
                 torch.tensor(l.weight.data).double())
             layers[-1].bias = nn.Parameter(torch.tensor(l.bias.data).double())
+
         elif isinstance(l, BatchNorm1d):
             layers.append(nn.BatchNorm1d(int(l.num_features)))
             layers[-1].weight = nn.Parameter(
                 torch.tensor(l.gamma.data).double())
             layers[-1].bias = nn.Parameter(torch.tensor(l.beta.data).double())
+
+        elif isinstance(l, BatchNorm2d):
+            layers.append(nn.BatchNorm2d(l.size))
+            layers[-1].weight = nn.Parameter(
+                torch.tensor(l.gamma.data).double())
+            layers[-1].bias = nn.Parameter(torch.tensor(l.beta.data).double())
+
         elif isinstance(l, ReLU):
             layers.append(nn.ReLU())
+
+        elif isinstance(l, Flatten):
+            layers.append(nn.Flatten())
+
+        elif isinstance(l, Conv1d):
+            layers.append(nn.Conv1d(int(l.in_channel), int(l.out_channel), \
+                                    l.kernel_size, int(l.stride), int(l.padding)))
+            layers[-1].weight = nn.Parameter(
+                torch.tensor(l.weight.data).double())
+            layers[-1].bias = nn.Parameter(torch.tensor(l.bias.data).double())
+
+        elif isinstance(l, Conv2d):
+            layers.append(nn.Conv2d(int(l.in_channel), int(l.out_channel), \
+                                    l.kernel_size, int(l.stride), int(l.padding)))
+            layers[-1].weight = nn.Parameter(
+                torch.tensor(l.weight.data).double())
+            layers[-1].bias = nn.Parameter(torch.tensor(l.bias.data).double())
+        
+        elif isinstance(l, MaxPool2d):
+            layers.append(nn.MaxPool2d(l.kernel_size, l.stride))
+
         else:
             raise Exception("Unrecognized layer in Nanograd model")
     pytorch_model = nn.Sequential(*layers)
@@ -337,3 +366,73 @@ def check_model_param_settings(model):
         # TODO: Check that weights and biases of LSTM layers are correctly configured
         
     return True
+
+
+def forward_test(model, criterion=None, batch_size=(2,5)):
+    """
+        Tests forward, printing whether a mismatch occurs in forward.
+    """
+    pytorch_model = get_same_pytorch_mlp(model)
+    batch_size = np.random.randint(*batch_size) if type(batch_size) == tuple\
+        else batch_size
+    x, y = generate_dataset_for_mytorch_model(model, batch_size)
+    pytorch_criterion = get_same_pytorch_criterion(criterion)
+
+    forward_(model, criterion, pytorch_model, pytorch_criterion, x, y)
+
+
+def forward_backward_test(model, criterion=None, batch_size=(2,5)):
+    """
+        Tests forward and back, printing whether a mismatch occurs in forward or
+        backwards.
+    """
+    pytorch_model = get_same_pytorch_mlp(model)
+    batch_size = np.random.randint(*batch_size) if type(batch_size) == tuple\
+        else batch_size
+    x, y = generate_dataset_for_mytorch_model(model, batch_size)
+    pytorch_criterion = get_same_pytorch_criterion(criterion)
+
+    (mx, my, px, py) = forward_(model, criterion, pytorch_model,
+                                pytorch_criterion, x, y)
+
+    backward_(mx, my, model, px, py, pytorch_model)
+
+
+def step_test(model, optimizer, train_steps, eval_steps,
+               criterion=None, batch_size=(2, 5)):
+    """
+        Tests subsequent forward, back, and update operations, printing whether
+        a mismatch occurs in forward or backwards.
+    """
+    pytorch_model = get_same_pytorch_mlp(model)
+    pytorch_optimizer = get_same_pytorch_optimizer(optimizer, pytorch_model)
+    pytorch_criterion = get_same_pytorch_criterion(criterion)
+    batch_size = np.random.randint(*batch_size) if type(batch_size) == tuple\
+        else batch_size
+    x, y = generate_dataset_for_mytorch_model(model, batch_size)
+
+    model.train()
+    pytorch_model.train()
+    for s in range(train_steps):
+        pytorch_optimizer.zero_grad()
+        optimizer.zero_grad()
+
+        (mx, my, px, py) = forward_(model, criterion,
+                                    pytorch_model, pytorch_criterion, x, y)
+
+        backward_(mx, my, model, px, py, pytorch_model)
+
+        pytorch_optimizer.step()
+        optimizer.step()
+        check_model_param_settings(model)
+
+    model.eval()
+    pytorch_model.eval()
+    for s in range(eval_steps):
+        pytorch_optimizer.zero_grad()
+        optimizer.zero_grad()
+
+        (mx, my, px, py) = forward_(model, criterion,
+                                    pytorch_model, pytorch_criterion, x, y)
+
+    check_model_param_settings(model)

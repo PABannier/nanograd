@@ -3,6 +3,35 @@ import nn.functional as F
 
 import numpy as np
 
+
+def init_weights(tensor, weight_initialization, fan_mode="fan_in"):
+    assert isinstance(tensor, Tensor), f"Only Tensor objects are accepted. Got {type(layer).__name__}"
+    assert fan_mode in ["fan_in", "fan_out"], "Wrong fan mode. Only fan_in and fan_out supported."
+
+    out_features, in_features = tensor.shape[0], tensor.shape[1]
+
+    if weight_initialization == "kaiming_normal":
+        std = np.sqrt(1 / in_features) if fan_mode == "fan_in" else np.sqrt(1.0 / out_features)
+        weight = np.random.normal(0.0, std, tensor.shape)
+
+    elif weight_initialization == "kaiming_uniform":
+        bound = np.sqrt(3 / in_features) if fan_mode == "fan_in" else np.sqrt(3.0 / out_features)
+        weight = np.random.uniform(-bound, bound, tensor.shape)
+        
+    elif weight_initialization == "glorot_normal":
+        std = np.sqrt(2.0 / (in_features + out_features))
+        weight = np.random.normal(0.0, std, tensor.shape)
+
+    elif weight_initialization == "glorot_uniform":
+        bound = np.sqrt(6.0 / (in_features + out_features))
+        weight = np.random.uniform(-bound, bound, tensor.shape) 
+
+    else:
+        raise Exception("Unknown weight initialization methods. Only Glorot and Kaiming are available.")
+        
+    return Tensor(weight, requires_grad=tensor.requires_grad, is_parameter=tensor.is_parameter)
+
+
 class Module:
     r"""
         Base class (superclass) for all components of an NN.
@@ -152,10 +181,12 @@ class Linear(Module):
         self.in_features = in_features
         self.out_features = out_features
 
-        self.weight_initialization = weight_initialization
-        self.fan_mode = fan_mode
+        # TODO: INIT WEIGHTS !!!!
 
-        self._initialize_parameters()
+        #self.weight = Tensor.zeros((self.out_features, self.in_features), requires_grad=True, is_parameter=True)
+        #init_weights(self.weight, weight_initialization, fan_mode)
+        self.weight = Tensor.normal(0, 1, (self.out_features, self.in_features), requires_grad=True, is_parameter=True)
+        self.bias = Tensor.zeros(self.out_features, requires_grad=True, is_parameter=True)
 
     def __call__(self, x):
         return self.forward(x)
@@ -167,37 +198,11 @@ class Linear(Module):
         Returns:
             Tensor: (batch_size, out_features)
         """
-        
-        return x @ self.weight.T() + self.bias
-    
-    def _initialize_parameters(self):
-        assert self.fan_mode in ("fan_in", "fan_out"), "Wrong fan mode. Only fan_in and fan_out supported."
-
-        if self.weight_initialization == "kaiming_normal":
-            std = np.sqrt(1 / self.in_features) if self.fan_mode == "fan_in" else np.sqrt(1.0 / self.out_features)
-            weight = np.random.normal(0.0, std, (self.out_features, self.in_features))
-
-        elif self.weight_initialization == "kaiming_uniform":
-            bound = np.sqrt(3 / self.in_features) if self.fan_mode == "fan_in" else np.sqrt(3.0 / self.out_features)
-            weight = np.random.uniform(-bound, bound, (self.out_features, self.in_features))
-        
-        elif self.weight_initialization == "glorot_normal":
-            std = np.sqrt(2.0 / (self.in_features + self.out_features))
-            weight = np.random.normal(0.0, std, (self.out_features, self.in_features))
-
-        elif self.weight_initialization == "glorot_uniform":
-            bound = np.sqrt(6.0 / (self.in_features + self.out_features))
-            weight = np.random.uniform(-bound, bound, (self.out_features, self.in_features)) 
-
-        else:
-            raise Exception("Unknown weight initialization methods. Only Glorot and Kaiming are available.")
-        
-        self.weight = Tensor(weight, requires_grad=True, is_parameter=True)
-        self.bias = Tensor.zeros(self.out_features, requires_grad=True, is_parameter=True)
+        return x @ self.weight.T() + self.bias        
 
 
 class BatchNorm1d(Module):
-    """Batch Normalization Layer
+    """Batch Normalization Layer 1d
 
         Args:
             num_features (int): # dims in input and output
@@ -245,6 +250,206 @@ class BatchNorm1d(Module):
     def _normalize(self, x, mean, var):
         x_hat = (x - mean) / (var + self.eps).sqrt()
         return self.gamma * x_hat + self.beta
+
+
+class BatchNorm2d(Module):
+    """Batch Normalization Layer 2d
+
+        Args:
+            num_features (int): # dims in input and output
+            eps (float): value added to denominator for numerical stability
+                        (not important for now)
+            momentum (float): value used for running mean and var computation
+
+        Inherits from:
+            Module (mytorch.nn.module.Module)
+    """
+    def __init__(self, size, eps=1e-5, momentum=0.1):
+        super().__init__()
+        self.size = size
+
+        self.eps = Tensor(eps)
+        self.momentum = Tensor(momentum)
+
+        # To make the final output affine
+        self.gamma = Tensor.ones(self.size, requires_grad=True, is_parameter=True)
+        self.beta = Tensor.zeros(self.size, requires_grad=True, is_parameter=True)
+
+        # Running mean and var
+        self.running_mean = Tensor.zeros(self.size, requires_grad=False, is_parameter=False)
+        self.running_var = Tensor.ones(self.size, requires_grad=False, is_parameter=False)
+
+    def forward(self, x):
+        """
+            Args:
+                x (Tensor): (batch_size, num_features)
+            Returns:
+                Tensor: (batch_size, num_features)
+        """
+        if self.is_train == True:
+            batch_mean = x.mean(axis=(0, 2, 3))
+            batch_var = ((x - batch_mean.reshape(shape=[1, -1, 1, 1])) ** 2).mean(axis=(0, 2, 3))
+            batch_empirical_var = ((x - batch_mean.reshape(shape=[1, -1, 1, 1])) ** 2).sum(axis=(0, 2, 3)) / Tensor(x.shape[0] - 1)
+
+            self.running_mean = (Tensor(1) - self.momentum) * self.running_mean + self.momentum * batch_mean
+            self.running_var = (Tensor(1) - self.momentum) * self.running_var + self.momentum * batch_empirical_var
+
+            return self._normalize(x, batch_mean, batch_var)
+        else:
+            return self._normalize(x, self.running_mean, self.running_var)
+        
+    def _normalize(self, x, mean, var):
+        x_hat = (x - mean.reshape(shape=[1, -1, 1, 1])) / (var + self.eps).sqrt().reshape(shape=[1, -1, 1, 1])
+        return self.gamma.reshape(shape=[1, -1, 1, 1]) * x_hat + self.beta.reshape(shape=[1, -1, 1, 1])
+
+
+class Conv1d(Module):
+    r"""
+        1-dimensional convolutional layer.
+       
+        Args:
+            in_channel (int): # channels in input (example: # color channels in image)
+            out_channel (int): # channels produced by layer
+            kernel_size (int): edge length of the kernel (i.e. 3x3 kernel <-> kernel_size = 3)
+            stride (int): Stride of the convolution (filter)
+    """
+    def __init__(self, in_channel, out_channel, kernel_size, stride=1, padding=0):
+        super().__init__()
+        self.in_channel = in_channel
+        self.out_channel = out_channel
+        self.kernel_size = kernel_size
+        self.stride = stride
+        self.padding = padding
+
+        # Initializing weights and bias (not a very good initialization strategy)
+        weight = np.random.normal(0, 1.0, (out_channel, in_channel, kernel_size))
+        self.weight = Tensor(weight, requires_grad=True, is_parameter=True)
+
+        bias = np.zeros(out_channel)
+        self.bias = Tensor(bias, requires_grad=True, is_parameter=True)
+
+    def __call__(self, x):
+        return self.forward(x)
+
+    def forward(self, x):
+        """
+        Args:
+            x (Tensor): (batch_size, in_channel, input_size)
+        Returns:
+            Tensor: (batch_size, out_channel, output_size)
+        """
+        return F.Conv1d.apply(x, self.weight, self.bias, self.stride, self.padding)
+
+
+class Conv2d(Module):
+    r"""
+        2-dimensional convolutional layer.
+
+        Args:
+            in_channel (int): # channels in input (example: # color channels in image)
+            out_channel (int): # channels produced by layer
+            kernel_size (tuple): edge lengths of the kernel
+            stride (int): stride of the convolution (filter)
+            padding (int): padding for the convolution
+    """
+    def __init__(self, in_channel, out_channel, kernel_size, stride=1, padding=0):
+        super().__init__()
+        self.in_channel = in_channel
+        self.out_channel = out_channel
+        self.kernel_size = kernel_size if isinstance(kernel_size, tuple) else (kernel_size, kernel_size)
+        self.stride = stride
+        self.padding = padding
+
+        # Initializing weights and bias (not a very good initialization strategy)
+        weight = np.random.normal(0, 1.0, (self.out_channel, self.in_channel, *self.kernel_size))
+        self.weight = Tensor(weight, requires_grad=True, is_parameter=True)
+
+        bias = np.zeros(out_channel)
+        self.bias = Tensor(bias, requires_grad=True, is_parameter=True)
+    
+    def __call__(self, x):
+        return self.forward(x)
+    
+    def forward(self, x):
+        """
+            Args:
+                x (Tensor): (batch_size, in_channel, width, height)
+            Returns:
+                Tensor: (batch_size, out_channel, output_dim1, output_dim2)
+        """
+        return F.Conv2d.apply(x, self.weight, self.bias, self.stride, self.padding)
+
+
+class MaxPool2d(Module):
+    r"""
+        Performs a max pooling operation after a 2d convolution 
+    """
+    def __init__(self, kernel_size, stride):
+        super().__init__()
+        self.kernel_size = kernel_size if isinstance(kernel_size, tuple) else (kernel_size, kernel_size)
+        self.stride = stride
+    
+    def __call__(self, x):
+        return self.forward(x)
+    
+    def forward(self, x):
+        """
+            Args:
+                x (Tensor): (batch_size, channel, in_width, in_height)
+            
+            Returns:
+                Tensor: (batch_size, channel, out_width, out_height)
+        """
+        return F.MaxPool2d.apply(x, self.kernel_size, self.stride)
+
+
+class Flatten(Module):
+    r"""
+        Layer that flattens all dimensions for each observation in a batch
+
+        >>> x = torch.randn(4, 3, 2) # batch of 4 observations, each sized (3, 2)
+        >>> x
+        tensor([[[ 0.8816,  0.9773],
+                [-0.1246, -0.1373],
+                [-0.1889,  1.6222]],
+
+                [[-0.9503, -0.8294],
+                [ 0.8900, -1.2003],
+                [-0.9701, -0.4436]],
+
+                [[ 1.7809, -1.2312],
+                [ 1.0769,  0.6283],
+                [ 0.4997, -1.7876]],
+
+                [[-0.5303,  0.3655],
+                [-0.7496,  0.6935],
+                [-0.8173,  0.4346]]])
+        >>> layer = Flatten()
+        >>> out = layer(x)
+        >>> out
+        tensor([[ 0.8816,  0.9773, -0.1246, -0.1373, -0.1889,  1.6222],
+                [-0.9503, -0.8294,  0.8900, -1.2003, -0.9701, -0.4436],
+                [ 1.7809, -1.2312,  1.0769,  0.6283,  0.4997, -1.7876],
+                [-0.5303,  0.3655, -0.7496,  0.6935, -0.8173,  0.4346]])
+        >>> out.shape
+        torch.size([4, 6]) # batch of 4 observations, each flattened into 1d array size (6,)
+    """
+    def __init__(self):
+        super().__init__()
+
+    def __call__(self, x):
+        return self.forward(x)
+
+    def forward(self, x):
+        """
+        Args:
+            x (Tensor): (batch_size, dim_2, dim_3, ...) arbitrary number of dims after batch_size
+        Returns:
+            out (Tensor): (batch_size, dim_2 * dim_3 * ...) batch_size, then all other dims flattened
+        """
+        dim1 = x.shape[0]
+        dim2 = np.prod(x.shape[1:])
+        return x.reshape((dim1, dim2))
 
 
 # ***** Activation functions *****

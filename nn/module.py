@@ -12,24 +12,24 @@ def init_weights(tensor, weight_initialization, fan_mode="fan_in"):
 
     if weight_initialization == "kaiming_normal":
         std = np.sqrt(1 / in_features) if fan_mode == "fan_in" else np.sqrt(1.0 / out_features)
-        weight = np.random.normal(0.0, std, tensor.shape)
-
+        return Tensor.normal(0.0, std, tensor.shape, requires_grad=tensor.requires_grad, \
+                                                     is_parameter=tensor.is_parameter)
     elif weight_initialization == "kaiming_uniform":
         bound = np.sqrt(3 / in_features) if fan_mode == "fan_in" else np.sqrt(3.0 / out_features)
         weight = np.random.uniform(-bound, bound, tensor.shape)
-        
+        return Tensor(weight, requires_grad=tensor.requires_grad, \
+                              is_parameter=not tensor.requires_grad)
     elif weight_initialization == "glorot_normal":
         std = np.sqrt(2.0 / (in_features + out_features))
-        weight = np.random.normal(0.0, std, tensor.shape)
-
+        return Tensor.normal(0.0, std, tensor.shape, requires_grad=tensor.requires_grad, \
+                                                     is_parameter=tensor.is_parameter)
     elif weight_initialization == "glorot_uniform":
         bound = np.sqrt(6.0 / (in_features + out_features))
         weight = np.random.uniform(-bound, bound, tensor.shape) 
-
+        return Tensor(weight, requires_grad=tensor.requires_grad, \
+                              is_parameter=not tensor.requires_grad)
     else:
         raise Exception("Unknown weight initialization methods. Only Glorot and Kaiming are available.")
-        
-    return Tensor(weight, requires_grad=tensor.requires_grad, is_parameter=tensor.is_parameter)
 
 
 class Module:
@@ -181,11 +181,8 @@ class Linear(Module):
         self.in_features = in_features
         self.out_features = out_features
 
-        # TODO: INIT WEIGHTS !!!!
-
-        #self.weight = Tensor.zeros((self.out_features, self.in_features), requires_grad=True, is_parameter=True)
-        #init_weights(self.weight, weight_initialization, fan_mode)
-        self.weight = Tensor.normal(0, 1, (self.out_features, self.in_features), requires_grad=True, is_parameter=True)
+        self.weight = Tensor.zeros((self.out_features, self.in_features), requires_grad=True, is_parameter=True)
+        self.weight = init_weights(self.weight, weight_initialization, fan_mode)
         self.bias = Tensor.zeros(self.out_features, requires_grad=True, is_parameter=True)
 
     def __call__(self, x):
@@ -313,20 +310,18 @@ class Conv1d(Module):
             kernel_size (int): edge length of the kernel (i.e. 3x3 kernel <-> kernel_size = 3)
             stride (int): Stride of the convolution (filter)
     """
-    def __init__(self, in_channel, out_channel, kernel_size, stride=1, padding=0):
+    def __init__(self, in_channel, out_channel, kernel_size, stride=1, padding=0,
+                       weight_initialization="kaiming_normal"):
         super().__init__()
-        self.in_channel = in_channel
-        self.out_channel = out_channel
+        self.in_channel, self.out_channel = in_channel, out_channel
+        self.stride, self.padding = stride, padding
         self.kernel_size = kernel_size
-        self.stride = stride
-        self.padding = padding
+        self.weight_initialization = weight_initialization
 
-        # Initializing weights and bias (not a very good initialization strategy)
-        weight = np.random.normal(0, 1.0, (out_channel, in_channel, kernel_size))
-        self.weight = Tensor(weight, requires_grad=True, is_parameter=True)
-
-        bias = np.zeros(out_channel)
-        self.bias = Tensor(bias, requires_grad=True, is_parameter=True)
+        shape = (self.out_channel, self.in_channel, self.kernel_size)
+        self.weight = Tensor.zeros(shape, requires_grad=True, is_parameter=True)
+        self.weight = init_weights(self.weight, self.weight_initialization)
+        self.bias = Tensor.zeros(out_channel, requires_grad=True, is_parameter=True)
 
     def __call__(self, x):
         return self.forward(x)
@@ -352,20 +347,22 @@ class Conv2d(Module):
             stride (int): stride of the convolution (filter)
             padding (int): padding for the convolution
     """
-    def __init__(self, in_channel, out_channel, kernel_size, stride=1, padding=0):
+    def __init__(self, in_channel, out_channel, kernel_size, stride=1, padding=0,
+                       weight_initialization="kaiming_normal"):
         super().__init__()
-        self.in_channel = in_channel
-        self.out_channel = out_channel
+        self.in_channel, self.out_channel = in_channel, out_channel
         self.kernel_size = kernel_size if isinstance(kernel_size, tuple) else (kernel_size, kernel_size)
-        self.stride = stride
-        self.padding = padding
+        self.stride, self.padding = stride, padding
+        self.weight_initialization = weight_initialization
 
         # Initializing weights and bias (not a very good initialization strategy)
-        weight = np.random.normal(0, 1.0, (self.out_channel, self.in_channel, *self.kernel_size))
-        self.weight = Tensor(weight, requires_grad=True, is_parameter=True)
+        #weight = np.random.normal(0, 1.0, (self.out_channel, self.in_channel, *self.kernel_size))
+        #self.weight = Tensor(weight, requires_grad=True, is_parameter=True)
 
-        bias = np.zeros(out_channel)
-        self.bias = Tensor(bias, requires_grad=True, is_parameter=True)
+        shape = (self.out_channel, self.in_channel, *self.kernel_size)
+        self.weight = Tensor.zeros(shape, requires_grad=True, is_parameter=True)
+        self.weight = init_weights(self.weight, self.weight_initialization)
+        self.bias = Tensor.zeros(self.out_channel, requires_grad=True, is_parameter=True)
     
     def __call__(self, x):
         return self.forward(x)

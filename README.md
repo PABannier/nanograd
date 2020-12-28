@@ -36,9 +36,10 @@ Inspirations: nanograd was initially inspired by [geohot's tinygrad](https://git
 ## Features
 
 - PyTorch-like autodifferentiation engine (dynamically constructed computational graph)
+- Weight initialization: Glorot uniform, Glorot normal, Kaiming uniform, Kaiming normal
 - Activations: ReLU, Sigmoid, tanh
-- Convolutions: Conv2d
-- Layers: Linear, BatchNorm1d
+- Convolutions: Conv2d, MaxPool2d
+- Layers: Linear, BatchNorm1d, BatchNorm2d, Flatten
 - Optimizers: SGD, Adam, AdamW
 - Loss: CrossEntropyLoss
 - Fully-working example with MNIST (96% validation accuracy)
@@ -46,9 +47,7 @@ Inspirations: nanograd was initially inspired by [geohot's tinygrad](https://git
 
 ## TODO
 
-- Weight initialization: Glorot uniform, Glorot normal, Kaiming uniform, Kaiming normal
-- Layers: BatchNorm2d
-- Convolutions: MaxPool and AveragePool
+- Convolutions: AveragePool
 - Cython-accelerated computations: autograd engine, tensor class and Conv2d
 - Improve comments and documentation
 - Resblocks

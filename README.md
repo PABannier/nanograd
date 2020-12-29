@@ -1,7 +1,5 @@
 <h1 align="center">
   <br>
-  <a href="https://github.com/PABannier/nanograd"><img src="docs/logo.jpg" alt="Nanograd"></a>
-  <br>
   nanograd
   <br>
 </h1>
@@ -24,14 +22,13 @@
 
 After verification, nanograd is not a city in Russia...
 
-However, it is a lightweight deep learning framework you should use for learning purposes.
+However, it is a PyTorch-like lightweight deep learning framework. Use it to implement any DL algo you want with 
+little boilerplate code.
 
-The main objective is to implement any DL algo or model you want with as little boilerplate code as possible. The second objective is to create built-in visualization tools to better understand how a deep neural network trains (especially backprop).
+The library has a built-in auto-differentiation engine that dynamically builds a computational graph. The framework 
+is built with basic features to train neural nets: basic ops, layers, weight initializers, optimizers and loss functions.
 
 The repo will be updated regularly with new features and examples.
-
-Inspirations: nanograd was initially inspired by [geohot's tinygrad](https://github.com/geohot/tinygrad) and [CMU Deep Learning course](http://deeplearning.cs.cmu.edu/F20/index.html).
-
 
 ## Features
 

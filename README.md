@@ -39,7 +39,7 @@ Inspirations: nanograd was initially inspired by [geohot's tinygrad](https://git
 - Weight initialization: Glorot uniform, Glorot normal, Kaiming uniform, Kaiming normal
 - Activations: ReLU, Sigmoid, tanh
 - Convolutions: Conv2d, MaxPool2d
-- Layers: Linear, BatchNorm1d, BatchNorm2d, Flatten
+- Layers: Linear, BatchNorm1d, BatchNorm2d, Flatten, Dropout
 - Optimizers: SGD, Adam, AdamW
 - Loss: CrossEntropyLoss
 - Fully-working example with MNIST (96% validation accuracy)

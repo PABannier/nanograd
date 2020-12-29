@@ -1,4 +1,4 @@
-from nn.module import Sequential, Linear, BatchNorm1d, ReLU
+from nn.module import Sequential, Linear, BatchNorm1d, ReLU, Conv2d, BatchNorm2d, Flatten, MaxPool2d
 from nn.loss import CrossEntropyLoss
 from optim.optimizer import SGD, Adam, AdamW
 from tensor import Tensor

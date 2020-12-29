@@ -185,9 +185,6 @@ class Linear(Module):
         self.weight = init_weights(self.weight, weight_initialization, fan_mode)
         self.bias = Tensor.zeros(self.out_features, requires_grad=True, is_parameter=True)
 
-    def __call__(self, x):
-        return self.forward(x)
-
     def forward(self, x):
         """
         Args:
@@ -323,9 +320,6 @@ class Conv1d(Module):
         self.weight = init_weights(self.weight, self.weight_initialization)
         self.bias = Tensor.zeros(out_channel, requires_grad=True, is_parameter=True)
 
-    def __call__(self, x):
-        return self.forward(x)
-
     def forward(self, x):
         """
         Args:
@@ -364,9 +358,6 @@ class Conv2d(Module):
         self.weight = init_weights(self.weight, self.weight_initialization)
         self.bias = Tensor.zeros(self.out_channel, requires_grad=True, is_parameter=True)
     
-    def __call__(self, x):
-        return self.forward(x)
-    
     def forward(self, x):
         """
             Args:
@@ -381,13 +372,10 @@ class MaxPool2d(Module):
     r"""
         Performs a max pooling operation after a 2d convolution 
     """
-    def __init__(self, kernel_size, stride):
+    def __init__(self, kernel_size, stride=1):
         super().__init__()
         self.kernel_size = kernel_size if isinstance(kernel_size, tuple) else (kernel_size, kernel_size)
         self.stride = stride
-    
-    def __call__(self, x):
-        return self.forward(x)
     
     def forward(self, x):
         """
@@ -434,19 +422,31 @@ class Flatten(Module):
     def __init__(self):
         super().__init__()
 
-    def __call__(self, x):
-        return self.forward(x)
-
     def forward(self, x):
-        """
-        Args:
-            x (Tensor): (batch_size, dim_2, dim_3, ...) arbitrary number of dims after batch_size
-        Returns:
-            out (Tensor): (batch_size, dim_2 * dim_3 * ...) batch_size, then all other dims flattened
+        r"""
+            Args:
+                x (Tensor): (batch_size, dim_2, dim_3, ...) arbitrary number of dims after batch_size
+            Returns:
+                out (Tensor): (batch_size, dim_2 * dim_3 * ...) batch_size, then all other dims flattened
         """
         dim1 = x.shape[0]
         dim2 = np.prod(x.shape[1:])
         return x.reshape((dim1, dim2))
+
+
+class Dropout(Module):
+    def __init__(self, p=0.5):
+        super().__init__()
+        self.mask, self.p = None, p
+    
+    def forward(self, x):
+        if self.is_train:
+            if self.mask is None:
+                val = np.random.binomial(1, self.p, size=x.shape)
+                self.mask = Tensor(val)
+            return x * self.mask
+        
+        return x
 
 
 # ***** Activation functions *****

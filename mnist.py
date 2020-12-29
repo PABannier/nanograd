@@ -34,6 +34,7 @@ def _train_one_epoch(X_train, Y_train, model, optimizer, criterion, batch_size):
 
         loss = criterion(Y_pred, Yb) 
         loss.backward() 
+        print('Backward done')
 
         optimizer.step()
 
@@ -95,20 +96,35 @@ if __name__ == "__main__":
     # Loading data
     X_train, Y_train, X_valid, Y_valid = load_mnist()
 
+    """
     X_train = X_train[16:].reshape(-1, 784).copy()
     Y_train = Y_train[8:]
     X_valid = X_valid[16:].reshape(-1, 784).copy()
+    Y_valid = Y_valid[8:]
+    """
+    X_train = X_train[16:].reshape(-1, 1, 28, 28).copy()
+    Y_train = Y_train[8:]
+    X_valid = X_valid[16:].reshape(-1, 1, 28, 28).copy()
     Y_valid = Y_valid[8:]
 
     # Normalizing data
     X_train = np.divide(X_train, 255.0)
     X_valid = np.divide(X_valid, 255.0)
     
+    """
     BobNet = Sequential(
         Linear(784, 20),
         BatchNorm1d(20),
         ReLU(),
         Linear(20, 10)
+    )
+    """
+    BobNet = Sequential(
+        Conv2d(1, 10, kernel_size=(3, 3)),
+        ReLU(),
+        MaxPool2d(kernel_size=(3, 3)),
+        Flatten(),
+        Linear(5760, 10)
     )
 
     optimizer = AdamW(BobNet.parameters(), lr=0.01)
@@ -123,7 +139,7 @@ if __name__ == "__main__":
         optimizer=optimizer,
         criterion=criterion,
         num_epochs=30,
-        batch_size=64
+        batch_size=256
     )
 
     # Visualization

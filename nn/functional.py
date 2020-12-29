@@ -3,6 +3,7 @@ import tensor
 from autograd_engine import Function
 from utils.utils import sigmoid, get_conv1d_output_size, get_conv2d_output_size
 from nn.conv_ops import col2im_6d, max_pool_2d_forward_im2col
+from conv_ops import max_pool_2d_backward_im2col, max_pool_2d_backward_reshape
 
 
 def unbroadcast(grad, shape, to_keep=0):

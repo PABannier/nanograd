@@ -1,8 +1,8 @@
 import numpy as np
 import tensor
-from nanograd.autograd_engine import Function
-from nanograd.utils.utils import sigmoid, get_conv1d_output_size, get_conv2d_output_size
-from nanograd.nn.conv_ops import col2im_6d, max_pool_2d_forward_im2col
+from autograd_engine import Function
+from utils.utils import sigmoid, get_conv1d_output_size, get_conv2d_output_size
+from nn.conv_ops import col2im_6d, max_pool_2d_forward_im2col
 
 
 def unbroadcast(grad, shape, to_keep=0):

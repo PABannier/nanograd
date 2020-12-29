@@ -5,28 +5,9 @@ import torch.nn as nn
 from torch.autograd import Variable
 
 from tensor import Tensor
-from nn.module import BatchNorm1d, BatchNorm2d, Linear, ReLU, Sequential, Conv1d, Conv2d, MaxPool2d, Flatten
-from nn.loss import CrossEntropyLoss
-from optim.optimizer import SGD
-
-MNIST_PATHS = [
-    '../data/train-images-idx3-ubyte.gz',
-    '../data/train-labels-idx1-ubyte.gz',
-    '../data/t10k-images-idx3-ubyte.gz',
-    '../data/t10k-labels-idx1-ubyte.gz'
-]
-
-def load_mnist():
-    print("Loading data...")
-    import gzip
-    mnist = []
-    for path in MNIST_PATHS:
-        with open(path, 'rb') as f:
-            dat = f.read()
-            arr = np.frombuffer(gzip.decompress(dat), dtype=np.uint8)
-            mnist.append(arr)
-    
-    return tuple(mnist)
+import nanograd.nn.module as nnn
+from nanograd.nn.loss import CrossEntropyLoss
+from nanograd.optim.optimizer import SGD
 
 
 def check_val(nano_tensor, torch_tensor, atol=1e-5):
@@ -78,7 +59,7 @@ def get_mytorch_linear_layers(model):
     """
     Returns a list of linear layers for a model.
     """
-    return list(filter(lambda x: isinstance(x, Linear), model.layers))
+    return list(filter(lambda x: isinstance(x, nnn.Linear), model.layers))
 
 
 def get_pytorch_linear_layers(pytorch_model):
@@ -95,45 +76,45 @@ def get_same_pytorch_mlp(model):
     """
     layers = []
     for l in model.layers:
-        if isinstance(l, Linear):
+        if isinstance(l, nnn.Linear):
             layers.append(nn.Linear(l.in_features, l.out_features))
             layers[-1].weight = nn.Parameter(
                 torch.tensor(l.weight.data).double())
             layers[-1].bias = nn.Parameter(torch.tensor(l.bias.data).double())
 
-        elif isinstance(l, BatchNorm1d):
+        elif isinstance(l, nnn.BatchNorm1d):
             layers.append(nn.BatchNorm1d(int(l.num_features)))
             layers[-1].weight = nn.Parameter(
                 torch.tensor(l.gamma.data).double())
             layers[-1].bias = nn.Parameter(torch.tensor(l.beta.data).double())
 
-        elif isinstance(l, BatchNorm2d):
+        elif isinstance(l, nnn.BatchNorm2d):
             layers.append(nn.BatchNorm2d(l.size))
             layers[-1].weight = nn.Parameter(
                 torch.tensor(l.gamma.data).double())
             layers[-1].bias = nn.Parameter(torch.tensor(l.beta.data).double())
 
-        elif isinstance(l, ReLU):
+        elif isinstance(l, nnn.ReLU):
             layers.append(nn.ReLU())
 
-        elif isinstance(l, Flatten):
+        elif isinstance(l, nnn.Flatten):
             layers.append(nn.Flatten())
 
-        elif isinstance(l, Conv1d):
+        elif isinstance(l, nnn.Conv1d):
             layers.append(nn.Conv1d(int(l.in_channel), int(l.out_channel), \
                                     l.kernel_size, int(l.stride), int(l.padding)))
             layers[-1].weight = nn.Parameter(
                 torch.tensor(l.weight.data).double())
             layers[-1].bias = nn.Parameter(torch.tensor(l.bias.data).double())
 
-        elif isinstance(l, Conv2d):
+        elif isinstance(l, nnn.Conv2d):
             layers.append(nn.Conv2d(int(l.in_channel), int(l.out_channel), \
                                     l.kernel_size, int(l.stride), int(l.padding)))
             layers[-1].weight = nn.Parameter(
                 torch.tensor(l.weight.data).double())
             layers[-1].bias = nn.Parameter(torch.tensor(l.bias.data).double())
         
-        elif isinstance(l, MaxPool2d):
+        elif isinstance(l, nnn.MaxPool2d):
             layers.append(nn.MaxPool2d(l.kernel_size, l.stride))
 
         else:

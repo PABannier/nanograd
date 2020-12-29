@@ -47,13 +47,13 @@ Inspirations: nanograd was initially inspired by [geohot's tinygrad](https://git
 
 ## TODO
 
-- Convolutions: AveragePool
 - Cython-accelerated computations: autograd engine, tensor class and Conv2d
-- Improve comments and documentation
+- Visualization tool
+- Improve comments and reorganize folders
+- Convolutions: AveragePool
 - Resblocks
 - GPU support
 - Attention mechanism for computer vision (CBAM), Transformer...
-- Visualization tool
 - Schedulers: Warmup, Cosine Annealing, 
 - Interpretability tools: GradCAM, ...
 

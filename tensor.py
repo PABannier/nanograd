@@ -1,6 +1,6 @@
 import numpy as np
 import autograd_engine
-from nn import functional as F
+from nanograd.nn import functional as F
 
 class Tensor:
     r"""

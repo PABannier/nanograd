@@ -1,14 +1,13 @@
 import numpy as np
-from utils import *
+
+from nanograd.utils.utils import get_conv1d_output_size, get_conv2d_output_size
+from tests.helpers import *
 
 import torch
 import torch.nn as nn
 from torch.autograd import Variable
 
-from tensor import Tensor
-from nn.module import Conv1d, Conv2d
-
-from nn.functional import _get_conv1d_output_size, _get_conv2d_output_size
+from nanograd.tensor import Tensor
 
 
 SEED = 42
@@ -31,7 +30,7 @@ def test_conv1d_output_size():
         kernel_size=kernel_size, stride=stride, padding=padding)
     y_torch = torch_model(inp_torch)
 
-    output_shape = _get_conv1d_output_size(input_length, kernel_size, stride, padding)
+    output_shape = get_conv1d_output_size(input_length, kernel_size, stride, padding)
 
     assert y_torch.shape[2] == output_shape
 
@@ -52,7 +51,7 @@ def test_conv2d_output_size():
         kernel_size=kernel_size, stride=stride, padding=padding)
     y_torch = torch_model(inp_torch)
 
-    output_shape = _get_conv2d_output_size(
+    output_shape = get_conv2d_output_size(
         input_height=input_height,
         input_width=input_width,
         kernel_size=kernel_size,
@@ -97,7 +96,7 @@ def test_conv2d_forward():
     inp = Tensor.normal(0, 1, (batch_size, in_channel, input_height, input_width))
     inp_torch = create_identical_torch_tensor(inp).double()
 
-    model = Sequential(Conv2d(in_channel, out_channel, kernel_size, stride, padding))
+    model = nnn.Sequential(nnn.Conv2d(in_channel, out_channel, kernel_size, stride, padding))
     torch_model = get_same_pytorch_mlp(model)
 
     y = model(inp)
@@ -111,7 +110,7 @@ def test_max_pool_2d_forward():
     inp = Tensor.normal(0, 1, (16, 3, 20, 20))
     inp_torch = create_identical_torch_tensor(inp).double()
 
-    model = Sequential(MaxPool2d(3, 1))
+    model = nnn.Sequential(nnn.MaxPool2d(3, 1))
     torch_model = get_same_pytorch_mlp(model)
 
     y = model(inp)

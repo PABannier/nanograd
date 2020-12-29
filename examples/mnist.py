@@ -1,13 +1,13 @@
-from nn.module import Sequential, Linear, BatchNorm1d, ReLU, Conv2d, BatchNorm2d, Flatten, MaxPool2d
-from nn.loss import CrossEntropyLoss
-from optim.optimizer import SGD, Adam, AdamW
-from tensor import Tensor
+from nanograd.nn.module import Sequential, Linear, BatchNorm1d, ReLU, Conv2d, BatchNorm2d, Flatten, MaxPool2d
+from nanograd.nn.loss import CrossEntropyLoss
+from nanograd.optim.optimizer import SGD, Adam, AdamW
+from nanograd.tensor import Tensor
 
 import matplotlib.pyplot as plt
 import numpy as np
 
 from tqdm import tqdm
-from utils import load_mnist
+from nanograd.utils.utils import load_mnist
     
 
 def _train_one_epoch(X_train, Y_train, model, optimizer, criterion, batch_size):

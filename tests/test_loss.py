@@ -5,8 +5,7 @@ from nn.functional import *
 import torch
 import numpy as np
 
-from utils import check_val_and_grad, create_identical_torch_tensor
-
+from tests.helpers import *
 
 def test_cross_entropy():
     num_classes = 10

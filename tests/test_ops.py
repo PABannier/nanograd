@@ -5,7 +5,7 @@ from nn.functional import *
 import torch
 import numpy as np
 
-from utils import check_val_and_grad, create_identical_torch_tensor
+from tests.helpers import *
 
 def test_add():
     a = Tensor(1, requires_grad=True)

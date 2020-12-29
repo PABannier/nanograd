@@ -1,6 +1,6 @@
 import numpy as np
 
-from nanograd.utils.utils import get_conv1d_output_size, get_conv2d_output_size
+from nanograd.nn.functional import get_conv1d_output_size, get_conv2d_output_size
 from tests.helpers import *
 
 import torch

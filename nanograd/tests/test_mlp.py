@@ -1,6 +1,5 @@
 import numpy as np
 
-from nanograd.utils import *
 from tests.helpers import *
 
 import torch

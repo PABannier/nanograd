@@ -2,3 +2,5 @@
 __pycache__/
 .vscode/
 __init__.pyc
+.ipynb_checkpoints/
+data/

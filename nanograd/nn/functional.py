@@ -1,9 +1,60 @@
 import numpy as np
 import tensor
 from autograd_engine import Function
-from utils.utils import sigmoid, get_conv1d_output_size, get_conv2d_output_size
-from nn.conv_ops import col2im_6d, max_pool_2d_forward_im2col
-from conv_ops import max_pool_2d_backward_im2col, max_pool_2d_backward_reshape
+from nn.conv_ops import (max_pool_2d_backward_im2col, 
+                         max_pool_2d_backward_reshape, 
+                         col2im_6d, max_pool_2d_forward_im2col)
+
+
+def sigmoid(x):
+    return 1 / (1 + np.exp(-x))
+
+
+def get_conv1d_output_size(input_length, kernel_size, stride, padding=None):
+    r"""
+        Gets the size of a Conv1d output.
+        NOTE: Padding has already been taken into account in input_height
+        and input_width
+
+        Args:
+            input_length (int): Length of the sequence
+            kernel_size (int): Size of the kernel
+            stride (int): Stride of the convolution
+            padding (int): Zero-padding added to both sides of the input
+            dilation (int): Spacing between kernel elements
+
+        Returns:
+            int: size of the output as an int
+    """
+    if padding is not None:
+        input_length += 2 * padding
+
+    return int((input_length - kernel_size) // stride + 1)
+
+
+def get_conv2d_output_size(input_height, input_width, kernel_size, stride, padding=None):
+    r"""
+        Gets the size of a Conv2d output.
+        NOTE: Padding has already been taken into account in input_height
+        and input_width, hence None as a default value.
+
+        Args:
+            input_height (int): Height of the input to the layer
+            input_width (int): Width of the input to the layer
+            kernel_size (tuple): Size of the kernel (if int the kernel is square)
+            stride (int): Stride of the convolution
+            padding (int): Zero-padding added to both sides of the input
+
+        Returns:
+            int: size of the output as a tuple
+    """
+    if padding is not None:
+        input_height += 2 * padding
+        input_width += 2 * padding 
+
+    output_height = (input_height - kernel_size[0]) // stride + 1
+    output_width = (input_width - kernel_size[1]) // stride + 1
+    return int(output_height), int(output_width)
 
 
 def unbroadcast(grad, shape, to_keep=0):

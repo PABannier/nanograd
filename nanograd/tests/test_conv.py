@@ -1,6 +1,7 @@
 import numpy as np
 
 from nanograd.nn.functional import get_conv1d_output_size, get_conv2d_output_size
+import nanograd.nn.module as nnn
 from tests.helpers import *
 
 import torch
@@ -62,7 +63,7 @@ def test_conv2d_output_size():
     assert y_torch.shape[2] == output_shape[0]
     assert y_torch.shape[3] == output_shape[1]
 
-"""
+
 def test_conv1d_forward():
     input_length = 400
     batch_size = 16
@@ -74,7 +75,7 @@ def test_conv1d_forward():
     inp = Tensor.normal(0, 1, (batch_size, in_channel, input_length))
     inp_torch = create_identical_torch_tensor(inp).double()
 
-    model = Sequential(Conv1d(in_channel, out_channel, kernel_size, stride, padding))
+    model = nnn.Sequential(nnn.Conv1d(in_channel, out_channel, kernel_size, stride, padding))
     torch_model = get_same_pytorch_mlp(model)
 
     y = model(inp)
@@ -82,7 +83,6 @@ def test_conv1d_forward():
 
     assert y.shape == y_torch.shape
     check_val(y, y_torch)
-"""
 
 
 def test_conv2d_forward():

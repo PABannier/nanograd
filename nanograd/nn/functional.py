@@ -1,60 +1,12 @@
 import numpy as np
 import tensor
 from autograd_engine import Function
-from nn.conv_ops import (max_pool_2d_backward_im2col, 
-                         max_pool_2d_backward_reshape, 
-                         col2im_6d, max_pool_2d_forward_im2col)
+from nn.conv_ops import (get_conv1d_output_size, get_conv2d_output_size, 
+                         get_im2col_indices, im2col, col2im)
 
 
 def sigmoid(x):
     return 1 / (1 + np.exp(-x))
-
-
-def get_conv1d_output_size(input_length, kernel_size, stride, padding=None):
-    r"""
-        Gets the size of a Conv1d output.
-        NOTE: Padding has already been taken into account in input_height
-        and input_width
-
-        Args:
-            input_length (int): Length of the sequence
-            kernel_size (int): Size of the kernel
-            stride (int): Stride of the convolution
-            padding (int): Zero-padding added to both sides of the input
-            dilation (int): Spacing between kernel elements
-
-        Returns:
-            int: size of the output as an int
-    """
-    if padding is not None:
-        input_length += 2 * padding
-
-    return int((input_length - kernel_size) // stride + 1)
-
-
-def get_conv2d_output_size(input_height, input_width, kernel_size, stride, padding=None):
-    r"""
-        Gets the size of a Conv2d output.
-        NOTE: Padding has already been taken into account in input_height
-        and input_width, hence None as a default value.
-
-        Args:
-            input_height (int): Height of the input to the layer
-            input_width (int): Width of the input to the layer
-            kernel_size (tuple): Size of the kernel (if int the kernel is square)
-            stride (int): Stride of the convolution
-            padding (int): Zero-padding added to both sides of the input
-
-        Returns:
-            int: size of the output as a tuple
-    """
-    if padding is not None:
-        input_height += 2 * padding
-        input_width += 2 * padding 
-
-    output_height = (input_height - kernel_size[0]) // stride + 1
-    output_width = (input_width - kernel_size[1]) // stride + 1
-    return int(output_height), int(output_width)
 
 
 def unbroadcast(grad, shape, to_keep=0):
@@ -461,60 +413,77 @@ class Tanh(Function):
 
 class Conv1d(Function):
     @staticmethod
-    def forward(ctx, x, weight, bias, stride, padding):
+    def forward(ctx, x, weight, bias, stride, pad):
         """
             The forward/backward of a Conv1d Layer in the comp graph.
             
             Args:
                 x (Tensor): (batch_size, in_channel, input_size) input data
-                weight (Tensor): (out_channel, in_channel, kernel_size)
+                weight (Tensor): (out_channel, in_channel, kernel_length)
                 bias (Tensor): (out_channel,)
                 stride (int): Stride of the convolution
-                padding (int): Padding for the convolution
+                pad (int): Padding for the convolution
             
             Returns:
                 Tensor: (batch_size, out_channel, output_size) output data
         """
         N, C, L = x.shape
         F, _, KL = weight.shape
+        OL = get_conv1d_output_size(L, KL, stride, pad)
 
-        # Padding the input
-        x_padded = np.pad(x.data, (padding, padding), mode="constant") 
+        L += 2 * pad
+        x_padded = np.pad(x.data, ((0, 0), (0, 0), (pad, pad)), mode="constant")
 
-        # Saving relevant tensors for backward
-        ctx.save_for_backward(x, weight, bias)
-
-        # Defining output shapes
-        L += 2 * padding
-        OL = get_conv1d_output_size(L, KL, stride)
-        out = np.zeros((N, F, OL))
-
-        # Im2Col operation
-        strides = (L, 1, C * L, stride * L)
-        strides = x.data.itemsize * np.array(strides)
-        x_stride = np.lib.stride_tricks.as_strided(
+        stride_shape = (L, 1, C * L, stride)
+        strides = x.data.itemsize * np.array(stride_shape)
+        x_strides = np.lib.stride_tricks.as_strided(
             x=x_padded,
-            shape=(C, L, N, OL),
-            strides=strides
+            strides=strides,
+            shape=(C, KL, N, OL),
+            writeable=False
         )
-        x_cols = np.ascontiguousarray(x_stride)
+
+        x_cols = np.ascontiguousarray(x_strides)
         x_cols.shape = (C * KL, N * OL)
 
-        res = weight.data.reshape(F, -1) @ x_cols + bias.data.reshape(-1, 1)
-        res.shape = (F, N, OL)
-        out = res.transpose(1, 0, 2)
-        
+        out = weight.data.reshape(F, -1) @ x_cols + bias.data.reshape(-1, 1)
+        out.shape = (F, N, OL)
+        out = out.transpose(1, 0, 2)
+
+        ctx.save_for_backward(x, weight, bias)
+        ctx.x_cols = x_cols
+        ctx.stride, ctx.pad = stride, pad
+
         return tensor.Tensor(out, requires_grad=x.requires_grad, is_leaf=not x.requires_grad)
     
     @staticmethod
     def backward(ctx, grad_output):
-        # TODO: Finish Conv1d backward pass. It's surprisingly similar to the forward pass.
-        raise NotImplementedError("Implement functional.Conv1d.backward()!")
+        x, weight, bias = ctx.saved_tensors
+        x_cols = ctx.x_cols
+        stride, pad = ctx.stride, ctx.pad
+
+        N, C, L = x.shape
+        F, _, KL = weight.shape
+        _, _,  OL = grad_output.shape
+
+        grad_bias = np.sum(grad_output.data, axis=(0, 2))
+        grad_bias = tensor.Tensor(grad_bias)
+
+        grad_out_reshaped = grad_output.data.transpose(1, 0, 2).reshape(F, -1)
+        grad_weight = (grad_out_reshaped @ x_cols.T).reshape(weight.shape)
+        grad_weight = tensor.Tensor(grad_weight)
+
+        grad_x = np.zeros((N, C, F, L), dtype=x_cols.dtype)
+        
+
+
+        return grad_x, grad_weight, grad_bias
+        
 
 
 class Conv2d(Function):
     @staticmethod
-    def forward(ctx, x, weight, bias, stride, padding):
+    def forward(ctx, x, weight, bias, stride, pad):
         """
             The forward/backward of a Conv2d Layer in the comp graph.
             
@@ -523,44 +492,39 @@ class Conv2d(Function):
                 weight (Tensor): (out_channel, in_channel, kernel_height, kernel_width)
                 bias (Tensor): (out_channel,)
                 stride (int): Stride of the convolution
-                padding (int): Padding for the convolution
+                pad (int): Padding for the convolution
             
             Returns:
                 Tensor: (batch_size, out_channel, output_height, output_width) output data
         """
-        # Retrieving the dimensions of the input and weight tensors
         N, C, H, W = x.shape
         F, _, HH, WW = weight.shape
+        OH, OW = get_conv2d_output_size(H, W, (HH, WW), stride, pad)
 
-        # Padding the input
-        x_padded = np.pad(x.data, ((0, 0), (0, 0), (padding, padding), (padding, padding)), mode="constant")
+        x_padded = np.pad(x.data, ((0, 0), (0, 0), (pad, pad), (pad, pad)), mode="constant")
 
-        # Defining output shapes
-        H += 2 * padding
-        W += 2 * padding
-        OH, OW = get_conv2d_output_size(H, W, (HH, WW), stride)
+        H += 2 * pad
+        W += 2 * pad
         out = np.zeros((N, F, OH, OW))
 
-        # Im2Col operation
         strides = (H * W, W, 1, C * H * W, stride * W, stride)
         strides = x.data.itemsize * np.array(strides)
         x_stride = np.lib.stride_tricks.as_strided(
             x=x_padded,
             shape=(C, HH, WW, N, OH, OW),
-            strides=strides
+            strides=strides,
+            writeable=False
         )
         x_cols = np.ascontiguousarray(x_stride)
         x_cols.shape = (C * HH * WW, N * OH * OW)
 
-        # Perform convolution as a matrix multiplication
         res = weight.data.reshape(F, -1) @ x_cols + bias.data.reshape(-1, 1)
         res.shape = (F, N, OH, OW)
         out = res.transpose(1, 0, 2, 3)
 
-        # Saving relevant tensors for backward
         ctx.save_for_backward(x, weight, bias)
         ctx.x_cols = x_cols
-        ctx.stride, ctx.pad = stride, padding
+        ctx.stride, ctx.pad = stride, pad
         
         return tensor.Tensor(out, requires_grad=x.requires_grad, is_leaf=not x.requires_grad)
     
@@ -575,60 +539,54 @@ class Conv2d(Function):
         _, _,  OH, OW = grad_output.shape
 
         grad_bias = np.sum(grad_output.data, axis=(0, 2, 3))
+        grad_bias = tensor.Tensor(grad_bias)
 
-        tmp_grad = grad_output.data.transpose(1, 0, 2, 3).reshape(F, -1)
+        tmp_grad = grad_output.data.transpose(1, 2, 3, 0).reshape(F, -1) # (1, 0, 2, 3) ???
         grad_weight = (tmp_grad @ x_cols.T).reshape(weight.shape)
+        grad_weight = tensor.Tensor(grad_weight)
         
         grad_x_cols = weight.data.reshape(F, -1).T @ tmp_grad
         grad_x_cols.shape = (C, HH, WW, N, OH, OW)
-        grad_x = col2im_6d(grad_x_cols, N, C, H, W, HH, WW, pad, stride)
-
+        grad_x = col2im(grad_x_cols, x.shape, HH, WW, pad, stride)
         grad_x = tensor.Tensor(grad_x)
-        grad_weight = tensor.Tensor(grad_weight)
-        grad_bias = tensor.Tensor(grad_bias)
 
         return grad_x, grad_weight, grad_bias
 
 
 class MaxPool2d(Function):
     @staticmethod
-    def forward(ctx, x, kernel_size, stride):
+    def forward(ctx, x, pool_size, stride):
         N, C, H, W = x.shape
-        HH, WW = kernel_size
+        HH, WW = pool_size
+        OH, OW = get_conv2d_output_size(H, W, pool_size, stride, 0)
 
-        same_size = HH == WW == stride
-        tiles = (H % HH == 0) and (W  % WW == 0)
+        x_reshaped = x.data.reshape(N * C, 1, H, W)
+        x_cols = im2col(x_reshaped, HH, WW, 0, stride)
 
-        if same_size and tiles:
-            x_reshaped, res = max_pool_2d_forward_reshape(x.data, kernel_size, stride)
-            ctx.method = 'reshape'
-            ctx.x_reshaped = x_reshaped
-        else:
-            x_cols, x_cols_argmax, res = max_pool_2d_forward_im2col(x.data, kernel_size, stride)
-            ctx.method = 'im2col'
-            ctx.x_cols = x_cols
-            ctx.x_cols_argmax = x_cols_argmax
+        max_idx = np.argmax(x_cols, axis=0)
+        res = x_cols[max_idx, range(max_idx.size)]
+        res = res.reshape(OH, OW, N, C).transpose(2, 3, 0, 1)
         
         res = tensor.Tensor(res, requires_grad=x.requires_grad, is_leaf=not x.requires_grad)
-        ctx.save_for_backward(x, res)
-        ctx.kernel_size, ctx.stride = kernel_size, stride
+        
+        ctx.x_cols = x_cols
+        ctx.max_idx = max_idx
+        ctx.dims = (N, C, H, W, HH, WW)
+        ctx.save_for_backward(x)
 
         return res   
 
     @staticmethod
     def backward(ctx, grad_output):
-        x, out = ctx.saved_tensors
-        kernel_size, stride = ctx.kernel_size, ctx.stride
-        method = ctx.method
+        x_cols, max_idx = ctx.x_cols, ctx.max_idx
+        N, C, H, W, HH, WW = ctx.dims
+        x = ctx.saved_tensors[0]
 
-        if method == 'reshape':
-            x_reshaped = ctx.x_reshaped 
-            grad = max_pool_2d_backward_reshape(grad_output.data, x.data, x_reshaped, out.data)
-        elif method == 'im2col':
-            x_cols, x_cols_argmax = ctx.x_cols, ctx.x_cols_argmax
-            grad = max_pool_2d_backward_im2col(grad_output.data, x.data, x_cols, x_cols_argmax, \
-                                               kernel_size[0], kernel_size[1], stride)
-        else:
-            raise Exception(f'Methods available for MaxPool2d backward: "reshape" and "im2col". Got {method}.')
+        grad_x_cols = np.zeros_like(x_cols)
+        grad_out_reshaped = grad_output.data.transpose(2, 3, 0, 1).ravel()
+        grad_x_cols[max_idx, range(max_idx.size)] = grad_out_reshaped
+
+        grad_x = col2im(grad_x_cols, (N * C, 1, H, W), HH, WW, 0, stride)
+        grad_x = grad_x.reshape(x.shape)
 
         return tensor.Tensor(grad),

@@ -349,10 +349,6 @@ class Conv2d(Module):
         self.stride, self.padding = stride, padding
         self.weight_initialization = weight_initialization
 
-        # Initializing weights and bias (not a very good initialization strategy)
-        #weight = np.random.normal(0, 1.0, (self.out_channel, self.in_channel, *self.kernel_size))
-        #self.weight = Tensor(weight, requires_grad=True, is_parameter=True)
-
         shape = (self.out_channel, self.in_channel, *self.kernel_size)
         self.weight = Tensor.zeros(shape, requires_grad=True, is_parameter=True)
         self.weight = init_weights(self.weight, self.weight_initialization)

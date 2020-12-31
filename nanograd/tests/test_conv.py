@@ -106,6 +106,30 @@ def test_conv2d_forward():
     check_val(y, y_torch)
 
 
+def test_conv2d_forward_backward():
+    input_height, input_width = 200, 200
+    batch_size = 16
+    in_channel, out_channel = 3, 10
+    kernel_size = (3, 3)
+    stride = 1
+    padding = 2
+
+    inp = Tensor.normal(0, 1, (batch_size, in_channel, input_height, input_width), requires_grad=True)
+    inp_torch = create_identical_torch_tensor(inp).double()
+
+    model = nnn.Sequential(nnn.Conv2d(in_channel, out_channel, kernel_size, stride, padding))
+    torch_model = get_same_pytorch_mlp(model)
+
+    y = model(inp)
+    y_torch = torch_model(inp_torch)
+
+    y_torch.sum().backward()
+    y.backward()
+
+    assert y.shape == y_torch.shape
+    check_val_and_grad(y, y_torch)    
+
+
 def test_max_pool_2d_forward():
     inp = Tensor.normal(0, 1, (128, 6, 26, 26))
     inp_torch = create_identical_torch_tensor(inp).double()
@@ -120,6 +144,23 @@ def test_max_pool_2d_forward():
     check_val(y, y_torch)
 
 
+def test_max_pool_2d_forward_backward():
+    inp = Tensor.normal(0, 1, (128, 6, 26, 26), requires_grad=True)
+    inp_torch = create_identical_torch_tensor(inp).double()
+
+    model = nnn.Sequential(nnn.MaxPool2d(kernel_size=(2, 2), stride=2))
+    torch_model = get_same_pytorch_mlp(model)
+
+    y = model(inp)
+    y_torch = torch_model(inp_torch)
+
+    y.backward()
+    y_torch.sum().backward()
+    
+    assert y.shape == y_torch.shape
+    check_val_and_grad(y, y_torch)
+
+
 def test_avg_pool_2d_forward():
     inp = Tensor.normal(0, 1, (128, 6, 26, 26))
     inp_torch = create_identical_torch_tensor(inp).double()
@@ -132,4 +173,18 @@ def test_avg_pool_2d_forward():
     
     assert y.shape == y_torch.shape
     check_val(y, y_torch)
+
+
+def test_avg_pool_2d_forward_backward():
+    inp = Tensor.normal(0, 1, (128, 6, 26, 26), requires_grad=True)
+    inp_torch = create_identical_torch_tensor(inp).double()
+
+    model = nnn.Sequential(nnn.AvgPool2d(kernel_size=(2, 2), stride=2))
+    torch_model = get_same_pytorch_mlp(model)
+
+    y = model(inp)
+    y_torch = torch_model(inp_torch)
+
+    assert y.shape == y_torch.shape
+    check_val_and_grad(y, y_torch)
 

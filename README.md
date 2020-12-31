@@ -35,7 +35,7 @@ The repo will be updated regularly with new features and examples.
 - PyTorch-like autodifferentiation engine (dynamically constructed computational graph)
 - Weight initialization: Glorot uniform, Glorot normal, Kaiming uniform, Kaiming normal
 - Activations: ReLU, Sigmoid, tanh
-- Convolutions: Conv2d, MaxPool2d
+- Convolutions: Conv2d, MaxPool2d, AvgPool2d
 - Layers: Linear, BatchNorm1d, BatchNorm2d, Flatten, Dropout
 - Optimizers: SGD, Adam, AdamW
 - Loss: CrossEntropyLoss
@@ -44,11 +44,9 @@ The repo will be updated regularly with new features and examples.
 
 ## TODO
 
-- Cython-accelerated computations: autograd engine, tensor class and Conv2d
 - GPU support
 - Visualization tool
 - Improve comments and code layout
-- Convolutions: AveragePool
 - Interpretability tools: GradCAM, Attention visualizer...
 - Code a code example with EfficientNet-B0, DistilBERT
 

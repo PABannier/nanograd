@@ -7,18 +7,19 @@ import torch.nn.functional as F
 
 from tqdm import tqdm
 
-from utils import load_mnist
-import time
+from utils.utils import load_mnist
 
 
 class ConvBobNet(nn.Module):
     def __init__(self):
         super(ConvBobNet, self).__init__()
 
-        self.l1 = nn.Conv2d(1, 6, kernel_size=(3, 3))
-        self.l2 = nn.MaxPool2d(kernel_size=(2, 2))
-        self.l3 = nn.ReLU()
-      
+        self.block1 = nn.Sequential(
+            nn.Conv2d(1, 6, kernel_size=(3, 3)),
+            nn.MaxPool2d(kernel_size=(2, 2)),
+            nn.ReLU()
+        )
+
         self.block2 = nn.Sequential(
             nn.Flatten(),
             nn.Linear(1014, 128),
@@ -28,29 +29,10 @@ class ConvBobNet(nn.Module):
         )
     
     def forward(self, x):
-      start = time.time()
-      x = self.l1(x)
-      print('Conv', (time.time() - start)*1000)
-      start2 = time.time()
-      x = self.l2(x)
-      print('Pool', (time.time() - start)*1000)
-      x = self.l3(x)
-      x = self.block2(x)
-      return nn.LogSoftmax(dim=1)(x)
+        x = self.block1(x)
+        x = self.block2(x)
+        return nn.LogSoftmax(dim=1)(x)
 
-
-class BobNet(torch.nn.Module):
-  def __init__(self):
-    super(BobNet, self).__init__()
-    self.l1 = nn.Linear(784, 128)
-    self.l2 = nn.Linear(128, 10)
-    self.sm = nn.LogSoftmax(dim=1)
-
-  def forward(self, x):
-    x = F.relu(self.l1(x))
-    x = self.l2(x)
-    x = self.sm(x)
-    return x
 
 # Loading data
 X_train, Y_train, X_test, Y_test = load_mnist()

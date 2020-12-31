@@ -4,7 +4,7 @@ import nn.functional as F
 import numpy as np
 
 
-def init_weights(tensor, weight_initialization, fan_mode="fan_in"):
+def init_weights(tensor:Tensor, weight_initialization:str, fan_mode:str="fan_in") -> Tensor:
     assert isinstance(tensor, Tensor), f"Only Tensor objects are accepted. Got {type(layer).__name__}"
     assert fan_mode in ["fan_in", "fan_out"], "Wrong fan mode. Only fan_in and fan_out supported."
 
@@ -41,17 +41,17 @@ class Module:
         Inheritance gives the subclass all the functions/variables below
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._submodules = {} # Submodules of the class
         self._parameters = {} # Trainable parameters in modules and its submodules
 
         self.is_train = True
     
-    def train(self):
+    def train(self) -> None:
         r"""Activates training mode for network component"""
         self.is_train = True
 
-    def eval(self):
+    def eval(self) -> None:
         r"""Activates evaluation mode for network component"""
         self.is_train = False
     
@@ -59,7 +59,7 @@ class Module:
         r"""Forward pass of the module"""
         raise NotImplementedError("Subclasses of module should have a forward method implemented")
 
-    def is_parameter(self, obj):
+    def is_parameter(self, obj) -> bool:
         r"""Checks if input object is a Tensor of trainable params"""
         return isinstance(obj, Tensor) and obj.is_parameter
 
@@ -75,12 +75,12 @@ class Module:
             for parameter in module.parameters():
                 yield parameter
     
-    def add_parameter(self, name, value):
+    def add_parameter(self, name, value) -> None:
         r"""Stores params"""
         self._ensure_is_initialized()
         self._parameters[name] = value
 
-    def add_module(self, name, value):
+    def add_module(self, name, value) -> None:
         r"""Stores module and its params"""
         self._ensure_is_initialized()
         self._submodules[name] = value
@@ -95,11 +95,11 @@ class Module:
         object.__setattr__(self, name, value)
 
     def __call__(self, *args):
-        """Runs self.forward(args)"""
+        r"""Runs self.forward(args)"""
         return self.forward(*args)
 
     def _ensure_is_initialized(self):
-        """Ensures that subclass's __init__() method ran super().__init__()"""
+        r"""Ensures that subclass's __init__() method ran super().__init__()"""
         if self.__dict__.get('_submodules') is None:
             raise Exception("Module not intialized. "
                             "Did you forget to call super().__init__()?")
@@ -116,7 +116,7 @@ class Sequential(Module):
         Inherits from:
             Module (nn.module.Module)
     """
-    def __init__(self, *layers):
+    def __init__(self, *layers) -> None:
         super().__init__()
         self.layers = layers
 
@@ -127,23 +127,23 @@ class Sequential(Module):
         r"""Enables list-like iteration through layers"""
         yield from self.layers
 
-    def __getitem__(self, idx):
+    def __getitem__(self, idx:int):
         r"""Enables list-like indexing for layers"""
         return self.layers[idx]
 
-    def train(self):
+    def train(self) -> None:
         r"""Sets this object and all trainable modules within to train mode"""
         self.is_train = True
         for submodule in self._submodules.values():
             submodule.train()
 
-    def eval(self):
+    def eval(self) -> None:
         r"""Sets this object and all trainable modules within to eval mode"""
         self.is_train = False
         for submodule in self._submodules.values():
             submodule.eval()
 
-    def forward(self, x):
+    def forward(self, x:Tensor) -> Tensor:
         r"""
             Passes input data through each layer in order
             
@@ -174,8 +174,8 @@ class Linear(Module):
         Inherits from:
             Module (mytorch.nn.module.Module)
     """
-    def __init__(self, in_features, out_features, 
-                 weight_initialization="kaiming_normal", fan_mode="fan_in"):
+    def __init__(self, in_features:int, out_features:int, 
+                 weight_initialization:str="kaiming_normal", fan_mode:str="fan_in") -> None:
         super().__init__()
 
         self.in_features = in_features
@@ -185,18 +185,18 @@ class Linear(Module):
         self.weight = init_weights(self.weight, weight_initialization, fan_mode)
         self.bias = Tensor.zeros(self.out_features, requires_grad=True, is_parameter=True)
 
-    def forward(self, x):
-        """
-        Args:
-            x (Tensor): (batch_size, in_features)
-        Returns:
-            Tensor: (batch_size, out_features)
+    def forward(self, x:Tensor) -> Tensor:
+        r"""
+            Args:
+                x (Tensor): (batch_size, in_features)
+            Returns:
+                Tensor: (batch_size, out_features)
         """
         return x @ self.weight.T() + self.bias        
 
 
 class BatchNorm1d(Module):
-    """Batch Normalization Layer 1d
+    r"""Batch Normalization Layer 1d
 
         Args:
             num_features (int): # dims in input and output
@@ -207,7 +207,7 @@ class BatchNorm1d(Module):
         Inherits from:
             Module (mytorch.nn.module.Module)
     """
-    def __init__(self, num_features, eps=1e-5, momentum=0.1):
+    def __init__(self, num_features:int, eps:float=1e-5, momentum:float=0.1) -> None:
         super().__init__()
         self.num_features = num_features
 
@@ -222,8 +222,8 @@ class BatchNorm1d(Module):
         self.running_mean = Tensor(np.zeros(self.num_features,), requires_grad=False, is_parameter=False)
         self.running_var = Tensor(np.ones(self.num_features,), requires_grad=False, is_parameter=False)
 
-    def forward(self, x):
-        """
+    def forward(self, x:Tensor) -> Tensor:
+        r"""
             Args:
                 x (Tensor): (batch_size, num_features)
             Returns:
@@ -247,10 +247,11 @@ class BatchNorm1d(Module):
 
 
 class BatchNorm2d(Module):
-    """Batch Normalization Layer 2d
+    r"""
+        Batch Normalization Layer 2d
 
         Args:
-            num_features (int): # dims in input and output
+            size (tuple): # dims in input and output
             eps (float): value added to denominator for numerical stability
                         (not important for now)
             momentum (float): value used for running mean and var computation
@@ -258,7 +259,7 @@ class BatchNorm2d(Module):
         Inherits from:
             Module (mytorch.nn.module.Module)
     """
-    def __init__(self, size, eps=1e-5, momentum=0.1):
+    def __init__(self, size:int, eps:float=1e-5, momentum:float=0.1) -> None:
         super().__init__()
         self.size = size
 
@@ -273,8 +274,10 @@ class BatchNorm2d(Module):
         self.running_mean = Tensor.zeros(self.size, requires_grad=False, is_parameter=False)
         self.running_var = Tensor.ones(self.size, requires_grad=False, is_parameter=False)
 
-    def forward(self, x):
-        """
+    def forward(self, x:Tensor) -> Tensor:
+        r"""
+            Forward pass
+
             Args:
                 x (Tensor): (batch_size, num_features)
             Returns:
@@ -292,7 +295,15 @@ class BatchNorm2d(Module):
         else:
             return self._normalize(x, self.running_mean, self.running_var)
         
-    def _normalize(self, x, mean, var):
+    def _normalize(self, x:Tensor, mean:Tensor, var:Tensor) -> Tensor:
+        r"""
+            Normalize a Tensor with mean and variance
+
+            Args:
+                x (Tensor): tensor to normalize
+                mean (Tensor): mean of the tensor 
+                var (Tensor): variance of the tensor
+        """
         x_hat = (x - mean.reshape(shape=[1, -1, 1, 1])) / (var + self.eps).sqrt().reshape(shape=[1, -1, 1, 1])
         return self.gamma.reshape(shape=[1, -1, 1, 1]) * x_hat + self.beta.reshape(shape=[1, -1, 1, 1])
 
@@ -307,8 +318,8 @@ class Conv1d(Module):
             kernel_size (int): edge length of the kernel (i.e. 3x3 kernel <-> kernel_size = 3)
             stride (int): Stride of the convolution (filter)
     """
-    def __init__(self, in_channel, out_channel, kernel_size, stride=1, padding=0,
-                       weight_initialization="kaiming_normal"):
+    def __init__(self, in_channel:int, out_channel:int, kernel_size:int, 
+                 stride:int=1, padding:int=0, weight_initialization:str="kaiming_normal") -> None:
         super().__init__()
         self.in_channel, self.out_channel = in_channel, out_channel
         self.stride, self.padding = stride, padding
@@ -320,7 +331,7 @@ class Conv1d(Module):
         self.weight = init_weights(self.weight, self.weight_initialization)
         self.bias = Tensor.zeros(out_channel, requires_grad=True, is_parameter=True)
 
-    def forward(self, x):
+    def forward(self, x:Tensor) -> Tensor:
         """
         Args:
             x (Tensor): (batch_size, in_channel, input_size)
@@ -341,8 +352,8 @@ class Conv2d(Module):
             stride (int): stride of the convolution (filter)
             padding (int): padding for the convolution
     """
-    def __init__(self, in_channel, out_channel, kernel_size, stride=1, padding=0,
-                       weight_initialization="kaiming_normal"):
+    def __init__(self, in_channel:int, out_channel:int, kernel_size:int, 
+                 stride:int=1, padding:int=0, weight_initialization:str="kaiming_normal") -> None:
         super().__init__()
         self.in_channel, self.out_channel = in_channel, out_channel
         self.kernel_size = kernel_size if isinstance(kernel_size, tuple) else (kernel_size, kernel_size)
@@ -354,7 +365,7 @@ class Conv2d(Module):
         self.weight = init_weights(self.weight, self.weight_initialization)
         self.bias = Tensor.zeros(self.out_channel, requires_grad=True, is_parameter=True)
     
-    def forward(self, x):
+    def forward(self, x:Tensor) -> Tensor:
         """
             Args:
                 x (Tensor): (batch_size, in_channel, width, height)
@@ -368,12 +379,12 @@ class MaxPool2d(Module):
     r"""
         Performs a max pooling operation after a 2d convolution 
     """
-    def __init__(self, kernel_size, stride=2):
+    def __init__(self, kernel_size:tuple, stride:int=2) -> None:
         super().__init__()
         self.kernel_size = kernel_size if isinstance(kernel_size, tuple) else (kernel_size, kernel_size)
         self.stride = stride
     
-    def forward(self, x):
+    def forward(self, x:Tensor) -> Tensor:
         """
             Args:
                 x (Tensor): (batch_size, channel, in_width, in_height)
@@ -388,12 +399,12 @@ class AvgPool2d(Module):
     r"""
         Performs an average pooling operation after a 2d convolution
     """
-    def __init__(self, kernel_size, stride=2):
+    def __init__(self, kernel_size:tuple, stride:int=2) -> None:
         super().__init__()
         self.kernel_size = kernel_size if isinstance(kernel_size, tuple) else (kernel_size, kernel_size)
         self.stride = stride
     
-    def forward(self, x):
+    def forward(self, x:Tensor) -> Tensor:
         """
             Args:
                 x (Tensor): (batch_size, channel, in_width, in_height)
@@ -414,14 +425,6 @@ class Flatten(Module):
                 [-0.1246, -0.1373],
                 [-0.1889,  1.6222]],
 
-                [[-0.9503, -0.8294],
-                [ 0.8900, -1.2003],
-                [-0.9701, -0.4436]],
-
-                [[ 1.7809, -1.2312],
-                [ 1.0769,  0.6283],
-                [ 0.4997, -1.7876]],
-
                 [[-0.5303,  0.3655],
                 [-0.7496,  0.6935],
                 [-0.8173,  0.4346]]])
@@ -429,16 +432,14 @@ class Flatten(Module):
         >>> out = layer(x)
         >>> out
         tensor([[ 0.8816,  0.9773, -0.1246, -0.1373, -0.1889,  1.6222],
-                [-0.9503, -0.8294,  0.8900, -1.2003, -0.9701, -0.4436],
-                [ 1.7809, -1.2312,  1.0769,  0.6283,  0.4997, -1.7876],
                 [-0.5303,  0.3655, -0.7496,  0.6935, -0.8173,  0.4346]])
         >>> out.shape
         torch.size([4, 6]) # batch of 4 observations, each flattened into 1d array size (6,)
     """
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
 
-    def forward(self, x):
+    def forward(self, x:Tensor) -> Tensor:
         r"""
             Args:
                 x (Tensor): (batch_size, dim_2, dim_3, ...) arbitrary number of dims after batch_size
@@ -451,17 +452,41 @@ class Flatten(Module):
 
 
 class Dropout(Module):
-    def __init__(self, p=0.5):
+    def __init__(self, p:float=0.5) -> None:
         super().__init__()
         self.mask, self.p = None, p
     
-    def forward(self, x):
+    def forward(self, x:Tensor) -> Tensor:
         if self.is_train:
             if self.mask is None:
                 val = np.random.binomial(1, 1.0 - self.p, size=x.shape)
                 self.mask = Tensor(val)
             return x * self.mask
         return x
+
+
+class CrossEntropyLoss(Module):
+    r"""
+        The XELoss function.
+        This class is for human use; just calls function in nn.functional.
+        Does not need args to initialize.
+        
+        >>> criterion = CrossEntropyLoss()
+        >>> criterion(outputs, labels)
+        3.241
+    """
+    def __init__(self) -> None:
+        pass
+
+    def forward(self, predicted:Tensor, target:Tensor) -> Tensor:
+        """
+        Args:
+            predicted (Tensor): (batch_size, num_classes)
+            target (Tensor): (batch_size,)
+        Returns:
+            Tensor: loss, stored as a float in a tensor 
+        """
+        return F.cross_entropy(predicted, target)
 
 
 # ***** Activation functions *****
@@ -477,10 +502,10 @@ class ReLU(Module):
         Inherits from:
             Module (nn.module.Module)
     """
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
     
-    def forward(self, x):
+    def forward(self, x:Tensor) -> Tensor:
         """
             Args:
                 x (Tensor): (batch_size, num_features)
@@ -499,10 +524,10 @@ class Sigmoid(Module):
         Inherits from:
             Module (nn.module.Modue)
     """
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
     
-    def forward(self, x):
+    def forward(self, x:Tensor) -> Tensor:
         """
             Args:
                 x (Tensor): (batch_size, num_features)
@@ -521,10 +546,10 @@ class Tanh(Module):
         Inherits from:
             Module (nn.module.Modue)
     """
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
     
-    def forward(self, x):
+    def forward(self, x:Tensor) -> Tensor:
         """
             Args:
                 x (Tensor): (batch_size, num_features)

@@ -191,26 +191,7 @@ class Exp(Function):
         a = ctx.saved_tensors[0]
         grad_a = grad_output.data * np.exp(a.data)
         return tensor.Tensor(grad_a), None
-
-
-class Sqrt(Function):
-    @staticmethod
-    def forward(ctx, a):
-        if not type(a).__name__ == "Tensor":
-            raise Exception("Arg for Sqrt must be tensor: {}".format(type(a).__name__))
-
-        ctx.save_for_backward(a)
-        requires_grad = a.requires_grad
-        b = tensor.Tensor(np.sqrt(a.data), requires_grad=requires_grad, 
-                                           is_leaf=not requires_grad)
-        return b
-    
-    @staticmethod
-    def backward(ctx, grad_output):
-        a = ctx.saved_tensors[0]
-        grad_a = np.divide(grad_output.data, 2 * np.sqrt(a.data))
-        return tensor.Tensor(grad_a), None
-
+        
 
 class Add(Function):
     @staticmethod
@@ -236,31 +217,6 @@ class Add(Function):
 
         return grad_a, grad_b
 
-
-class Sub(Function):
-    @staticmethod
-    def forward(ctx, a, b):
-        if not(type(a).__name__ == "Tensor" and type(b).__name__  == "Tensor"):
-            raise Exception(f"Both args must be  Tensor: {type(a)}, {type(b)}")
-
-        ctx.save_for_backward(a, b)
-        requires_grad = a.requires_grad or b.requires_grad
-        c = tensor.Tensor(a.data - b.data, requires_grad=requires_grad,
-                                           is_leaf=not requires_grad)
-        return c
-    
-    @staticmethod
-    def backward(ctx, grad_output):
-        a, b = ctx.saved_tensors
-
-        grad_a = grad_output.data
-        grad_b = -grad_output.data
-
-        grad_a = tensor.Tensor(unbroadcast(grad_a, a.shape))
-        grad_b = tensor.Tensor(unbroadcast(grad_b, b.shape))
-
-        return grad_a, grad_b
-        
 
 class Sum(Function):
     @staticmethod
@@ -343,22 +299,21 @@ class Pow(Function):
         if not isinstance(exp, (int, float)):
             raise Exception("Power can only be float or int")
 
+        out = a.data ** exp
+
         ctx.save_for_backward(a)
         ctx.exp = exp
-        c = tensor.Tensor(np.power(a.data, exp), requires_grad=a.requires_grad, \
-                                                  is_leaf=not a.requires_grad)
+        c = tensor.Tensor(out, requires_grad=a.requires_grad, \
+                               is_leaf=not a.requires_grad)
         return c
     
     @staticmethod
     def backward(ctx, grad_output):
         exp = ctx.exp
         a = ctx.saved_tensors[0]
-
         grad_a = exp * (a.data ** (exp-1)) * grad_output.data
 
-        grad_a = tensor.Tensor(grad_a)
-
-        return grad_a, None
+        return tensor.Tensor(grad_a), None
 
 
 class Mul(Function):
@@ -380,32 +335,6 @@ class Mul(Function):
 
         grad_a = grad_output.data * b.data
         grad_b = grad_output.data * a.data
-
-        grad_a = tensor.Tensor(unbroadcast(grad_a, a.shape))
-        grad_b = tensor.Tensor(unbroadcast(grad_b, b.shape))
-
-        return grad_a, grad_b
-
-
-class Div(Function):
-    @staticmethod
-    def forward(ctx, a, b):
-        if not (type(a).__name__ == 'Tensor' and type(b).__name__ == 'Tensor'):
-            raise Exception("Only tensors can be divided")
-
-        ctx.save_for_backward(a, b)
-        requires_grad = a.requires_grad or b.requires_grad
-
-        c = tensor.Tensor(np.divide(a.data, b.data), requires_grad=requires_grad, \
-                                                      is_leaf=not requires_grad)
-        return c     
-
-    @staticmethod
-    def backward(ctx, grad_output):
-        a, b = ctx.saved_tensors
-
-        grad_a = np.divide(grad_output.data, b.data)
-        grad_b = - a.data * np.divide(np.ones_like(b.data), np.power(b.data, 2)) * grad_output.data
 
         grad_a = tensor.Tensor(unbroadcast(grad_a, a.shape))
         grad_b = tensor.Tensor(unbroadcast(grad_b, b.shape))

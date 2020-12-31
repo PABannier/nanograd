@@ -212,6 +212,20 @@ def test_pow():
     check_val_and_grad(b, b_torch)
 
 
+def test_pow_exp_neg():
+    a = Tensor.normal(30, 1, (20, 20), requires_grad=True)
+    a_torch = create_identical_torch_tensor(a)
+
+    b = a ** (-2)
+    b_torch = a_torch ** (-2)
+
+    b_torch.sum().backward()
+    b.backward()
+
+    check_val_and_grad(a, a_torch)
+    check_val_and_grad(b, b_torch)
+
+
 def test_relu(): 
     a = Tensor.randn(20, 20, requires_grad=True)
     a_torch = create_identical_torch_tensor(a)

@@ -1,7 +1,10 @@
 import numpy as np
 
 
-def get_conv1d_output_size(input_length, kernel_size, stride, padding):
+def get_conv1d_output_size(input_length:int, 
+                           kernel_size:int, 
+                           stride:int, 
+                           padding:int) -> int:
     r"""
         Gets the size of a Conv1d output.
 
@@ -19,7 +22,9 @@ def get_conv1d_output_size(input_length, kernel_size, stride, padding):
     return int((input_length - kernel_size) // stride + 1)
 
 
-def get_conv2d_output_size(input_height, input_width, kernel_size, stride, padding):
+def get_conv2d_output_size(input_height:int, input_width:int, 
+                           kernel_size:int, stride:int, 
+                           padding:int) -> tuple:
     r"""
         Gets the size of a Conv2d output.
 
@@ -41,7 +46,8 @@ def get_conv2d_output_size(input_height, input_width, kernel_size, stride, paddi
     return int(output_height), int(output_width)
 
 
-def get_im2col_indices(x_shape, field_height, field_width, pad, stride):
+def get_im2col_indices(x_shape:int, field_height:int, 
+                       field_width:int, pad:int, stride:int) -> tuple:
     r"""
         Args:
             x_shape (tuple): shape of the signal
@@ -73,7 +79,8 @@ def get_im2col_indices(x_shape, field_height, field_width, pad, stride):
     return (k, i, j)
 
 
-def im2col(x, field_height, field_width, padding, stride,):
+def im2col(x:np.ndarray, field_height:int, field_width:int, 
+           padding:int, stride:int) -> np.ndarray:
     r"""
         Performs im2col transform
 
@@ -96,7 +103,8 @@ def im2col(x, field_height, field_width, padding, stride,):
     return cols
 
 
-def col2im(cols, x_shape, field_height, field_width, padding, stride):
+def col2im(cols:np.ndarray, x_shape:tuple, field_height:int, 
+           field_width:int, padding:int, stride:int) -> np.ndarray:
     r"""
         Performs col2im transform
 

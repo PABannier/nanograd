@@ -1,13 +1,16 @@
 import tensor
 
 def backward(grad_fn, grad_of_outputs):
-    """Recursive DFS that traverses comp graph, handing back gradients as it goes.
-    Args:
-        grad_fn (BackwardFunction or AccumulateGrad): Current node type from
-                                                      parent's `.next_functions`
-        grad_of_output (Tensor): Gradient of the final node w.r.t. current output
-    Returns:
-        No return statement needed.
+    r"""
+        Recursive DFS that traverses comp graph, handing back gradients as it goes.
+
+        Args:
+            grad_fn (BackwardFunction or AccumulateGrad): Current node type from
+                                                        parent's `.next_functions`
+            grad_of_output (Tensor): Gradient of the final node w.r.t. current output
+
+        Returns:
+            No return statement needed.
     """
 
     if grad_fn:
@@ -19,8 +22,10 @@ def backward(grad_fn, grad_of_outputs):
                 backward(functions[i], gradients[i])
 
 class Function:
-    """Superclass for linking nodes to the computational graph.
-    Operations in `functional.py` should inherit from this"""
+    r"""
+        Superclass for linking nodes to the computational graph.
+        Operations in `functional.py` should inherit from this
+    """
     @staticmethod
     def forward(ctx, *args):
         raise NotImplementedError("All subclasses must implement forward")
@@ -31,15 +36,15 @@ class Function:
 
     @classmethod
     def apply(cls, *args):
-        """Runs forward of subclass and links node to the comp graph.
-        Args:
-            cls (subclass of Function): (NOTE: Don't provide this;
-                                               already provided by `@classmethod`)
-                                        Current function, such as Add, Sub, etc.
-            args (tuple): arguments for the subclass's `.forward()`.
-                  (google "python asterisk arg")
-        Returns:
-            Tensor: Output tensor from operation that stores the current node.
+        r"""
+            Runs forward of subclass and links node to the comp graph.
+
+            Args:
+                cls (subclass of Function): Current function, such as Add, Sub, etc.
+                args (tuple): arguments for the subclass's `.forward()`.
+
+            Returns:
+                Tensor: Output tensor from operation that stores the current node.
         """
         # Creates BackwardFunction obj representing the current node
         backward_function = BackwardFunction(cls)
@@ -48,9 +53,6 @@ class Function:
         output_tensor = cls.forward(backward_function.ctx, *args)
 
         # 1) For each parent tensor in args, add their node to `backward_function.next_functions`
-        #    Note: Parents may/may not already have their own nodes. How do we handle this?
-        #    Note: Parents may not need to be connected to the comp graph. How do we handle this?
-        #    (see Appendix A.1 for hints)
         for arg in args:
             if isinstance(arg, tensor.Tensor):
                 if not arg.grad_fn:
@@ -74,21 +76,23 @@ class Function:
 
 
 class AccumulateGrad:
-    """Represents node where gradient must be accumulated.
-    Args:
-        tensor (Tensor): The tensor where the gradients are accumulated in `.grad`
+    r"""
+        Represents node where gradient must be accumulated.
+
+        Args:
+            tensor (Tensor): The tensor where the gradients are accumulated in `.grad`
     """
     def __init__(self, tensor):
         self.variable = tensor
-        self.next_functions = [] # nodes of current node's parents (this WILL be empty)
-                                 # exists just to be consistent in format with BackwardFunction
-        self.function_name = "AccumulateGrad" # just for convenience lol
+        self.next_functions = [] 
+        self.function_name = "AccumulateGrad"
 
     def apply(self, arg):
-        """Accumulates gradient provided.
-        (Hint: Notice name of function is the same as BackwardFunction's `.apply()`)
-        Args:
-            arg (Tensor): Gradient to accumulate
+        r"""
+            Accumulates gradient provided.
+
+            Args:
+                arg (Tensor): Gradient to accumulate
         """
         # if no grad stored yet, initialize. otherwise +=
         if self.variable.grad is None:
@@ -102,23 +106,25 @@ class AccumulateGrad:
         assert shape == grad_shape, (shape, grad_shape)
 
 class ContextManager:
-    """Used to pass variables between a function's `.forward()` and `.backward()`.
-    (Argument "ctx" in these functions)
+    r"""
+        Used to pass variables between a function's `.forward()` and `.backward()`.
+        (Argument "ctx" in these functions)
 
-    To store a tensor:
-    >>> ctx.save_for_backward(<tensors>, <to>, <store>)
+        To store a tensor:
+        >>> ctx.save_for_backward(<tensors>, <to>, <store>)
 
-    To store other variables (like integers):
-    >>> ctx.<some_name> = <some_variable>
+        To store other variables (like integers):
+        >>> ctx.<some_name> = <some_variable>
     """
     def __init__(self):
-        self.saved_tensors = [] # list that TENSORS get stored in
+        self.saved_tensors = [] 
 
     def save_for_backward(self, *args):
-        """Saves TENSORS only
-        See example above for storing other data types.
-        Args:
-            args (Tensor(s)): Tensors to store
+        r"""
+            Saves TENSORS only
+
+            Args:
+                args (Tensor(s)): Tensors to store
         """
         for arg in args:
             # Raises error if arg is not tensor (i warned you)
@@ -129,15 +135,16 @@ class ContextManager:
 
 
 class BackwardFunction:
-    """Representing an intermediate node where gradient must be passed.
-    Stored on output tensor of operation during `Function.apply()`
+    r"""
+        Representing an intermediate node where gradient must be passed.
+        Stored on output tensor of operation during `Function.apply()`
 
-    Args:
-        cls (subclass of Function): Operation being run. Don't worry about this;
-                                    already handled in `Function.apply()`
+        Args:
+            cls (subclass of Function): Operation being run. Don't worry about this;
+                                        already handled in `Function.apply()`
     """
     def __init__(self, cls):
-        self.ctx = ContextManager() # Just in case args need to be passed (see above)
+        self.ctx = ContextManager()
         self._forward_cls = cls
 
         # Nodes of parents, populated in `Function.apply`
@@ -147,11 +154,13 @@ class BackwardFunction:
         self.function_name = cls.__name__
 
     def apply(self, *args):
-        """Generates gradient by running the operation's `.backward()`.
-        Args:
-            args: Args for the operation's `.backward()`
-        Returns:
-            Tensor: gradient of parent's output w.r.t. current output
+        r"""
+            Generates gradient by running the operation's `.backward()`.
+
+            Args:
+                args: Args for the operation's `.backward()`
+
+            Returns:
+                Tensor: gradient of parent's output w.r.t. current output
         """
-        # Note that we've already provided the ContextManager
         return self._forward_cls.backward(self.ctx, *args)

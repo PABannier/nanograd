@@ -6,8 +6,9 @@ from torch.autograd import Variable
 
 from tensor import Tensor
 import nanograd.nn.module as nnn
-from nanograd.nn.loss import CrossEntropyLoss
 from nanograd.optim.optimizer import SGD
+
+from nanograd.nn.module import CrossEntropyLoss
 
 
 def check_val(nano_tensor, torch_tensor, atol=1e-5):

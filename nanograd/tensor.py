@@ -68,6 +68,38 @@ class Tensor:
     
     def __repr__(self):
         return self.__str__()
+
+    def __getitem__(self, args):
+        if args is None: 
+            args = []
+        elif type(args) in [list, tuple]: 
+            pass
+        else: 
+            args = [args]
+
+        indices = []
+
+        for i, arg in enumerate(args):
+            start, stop = arg.start, arg.stop
+
+            if start is None:
+                start = 0
+            elif type(start) != int:
+                raise TypeError(f"Indices must be integer. Got {type(start)}")
+            
+            if stop is None:
+                stop = self.shape[i]
+            elif type(stop) != int:
+                raise TypeError(f"Indices must be integer. Got {type(stop)}")
+            elif stop < 0:
+                stop = self.shape[i] + stop
+
+            assert arg.step is None or arg.step == 1, "Custom step not yet implemented"
+            indices.append((start, stop))
+        
+        indices += [(0, shape[i]) for i in range(len(args), len(self.shape))]
+        
+        return F.Slice.apply(self, indices)
         
     def __add__(self, other):
         return F.Add.apply(self, other)
@@ -97,6 +129,9 @@ class Tensor:
         out = self.sum(axis=axis)
         coeff = np.prod(out.shape) / np.prod(self.shape)
         return out * Tensor(coeff)
+
+    def max(self, axis=None):
+        return F.Max.apply(self, axis)
     
     def log(self):
         return F.Log.apply(self)
@@ -121,6 +156,25 @@ class Tensor:
 
     def tanh(self):
         return F.Tanh.apply(self)
+    
+    def _pool2d(self, field_height, field_width):
+        x_unpadded = self[:, :, 
+                          :self.shape[2] - self.shape[2] % field_height, 
+                          :self.shape[3] - self.shape[3] % field_width]
+        
+        x_reshaped = x_unpadded.reshape(
+            shape=(x_unpadded.shape[0], x_unpadded.shape[1], 
+                   x_unpadded.shape[2] // field_height, field_height, 
+                   x_unpadded.shape[3] // field_width, field_width)
+        )
+
+        return x_reshaped
+    
+    def max_pool2d(self, kernel_size=(2, 2)):
+        return self._pool2d(*kernel_size).max(axis=5).max(axis=3)
+    
+    def avg_pool2d(self, kernel_size=(2, 2)):
+        return self._pool2d(*kernel_size).mean(axis=(3, 5))
     
     @classmethod
     def zeros(cls, *shape, **kwargs):

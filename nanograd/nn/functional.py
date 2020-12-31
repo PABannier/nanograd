@@ -41,7 +41,7 @@ def cross_entropy(predicted, target):
 
 
 def to_one_hot(arr, num_classes):
-    """(Freebie) Converts a tensor of classes to one-hot, useful in XELoss
+    """Converts a tensor of classes to one-hot, useful in XELoss
 
     Example:
     >>> to_one_hot(Tensor(np.array([1, 2, 0, 0])), 3)
@@ -61,6 +61,36 @@ def to_one_hot(arr, num_classes):
     a = np.zeros((arr.shape[0], num_classes))
     a[np.arange(len(a)), arr] = 1
     return tensor.Tensor(a, requires_grad=True)
+
+
+def inner_slice(x, indices):
+  padding = [(max(0, -p[0]), max(0, p[1]-x.shape[i])) for i, p in enumerate(indices)]
+  x = np.pad(x, padding, mode="constant")
+  slices = [(p[0]+padding[i][0], p[1]+padding[i][0]) for i, p in enumerate(indices)]
+  return x[tuple([slice(x[0], x[1], None) for x in slices])]
+
+
+class Slice(Function):
+    @staticmethod
+    def forward(ctx, a, indices):
+        if not type(a).__name__ == 'Tensor':
+            raise Exception("Arg for Slice must be tensor: {}".format(type(a).__name__))
+
+        requires_grad = a.requires_grad
+        is_leaf = not a.requires_grad
+
+        out = inner_slice(a.data, indices)
+        ctx.shape = a.shape
+        ctx.indices = indices
+
+        return tensor.Tensor(out, requires_grad=requires_grad, is_leaf=is_leaf)
+    
+    @staticmethod
+    def backward(ctx, grad_output):
+        shape, fwd_indices = ctx.shape, ctx.indices
+        indices = [(0-p[0], grad_output.shape[i]+(shape[i]-p[1])) for i, p in enumerate(fwd_indices)]
+        out = inner_slice(grad_output.data, indices)
+        return tensor.Tensor(out),
 
 
 class Transpose(Function):
@@ -94,6 +124,36 @@ class Reshape(Function):
     @staticmethod
     def backward(ctx, grad_output):
         return tensor.Tensor(grad_output.data.reshape(ctx.shape)), None
+
+
+class Max(Function):
+    @staticmethod
+    def forward(ctx, a, axis=None):
+        if not type(a).__name__ == "Tensor":
+            raise Exception("Arg for Max must be tensor: {}".format(type(a).__name__))
+
+        axis = [axis] if type(axis) == int else axis
+        out = np.amax(a.data, axis=None if axis is None else tuple(axis), keepdims=True) 
+
+        ctx.save_for_backward(a)
+        ctx.axis = axis
+        ctx.out = out
+
+        if axis is not None:
+            out = out.reshape([a.shape[i] for i in range(len(a.shape)) if i not in axis])
+
+        return tensor.Tensor(out, requires_grad=a.requires_grad, is_leaf=not a.requires_grad)
+    
+    @staticmethod
+    def backward(ctx, grad_output):
+        axis, out = ctx.axis, ctx.out
+        inp = ctx.saved_tensors[0]
+        
+        shape = [1 if axis is None or i in axis else inp.shape[i] for i in range(len(inp.shape))]
+        ret2 = (inp.data == out.reshape(shape))
+        div = ret2.sum(axis=None if axis is None else tuple(axis), keepdims=True) 
+        out = ret2 * (grad_output.reshape(shape)).data / div
+        return tensor.Tensor(out), 
 
 
 class Log(Function):
@@ -469,17 +529,17 @@ class Conv1d(Function):
         grad_bias = np.sum(grad_output.data, axis=(0, 2))
         grad_bias = tensor.Tensor(grad_bias)
 
-        grad_out_reshaped = grad_output.data.transpose(1, 0, 2).reshape(F, -1)
+        grad_out_reshaped = grad_output.data.transpose(1, 2, 0).reshape(F, -1)
         grad_weight = (grad_out_reshaped @ x_cols.T).reshape(weight.shape)
         grad_weight = tensor.Tensor(grad_weight)
 
-        grad_x = np.zeros((N, C, F, L), dtype=x_cols.dtype)
-        
-
+        grad_x_cols = weight.data.reshape(F, -1).T @ grad_out_reshaped
+        grad_x_cols.shape = (C, KL, N, OL)
+        grad_x = col2im(grad_x_cols, x.shape, 1, KL, pad, stride)
+        grad_x = tensor.Tensor(grad_x)
 
         return grad_x, grad_weight, grad_bias
         
-
 
 class Conv2d(Function):
     @staticmethod
@@ -541,52 +601,13 @@ class Conv2d(Function):
         grad_bias = np.sum(grad_output.data, axis=(0, 2, 3))
         grad_bias = tensor.Tensor(grad_bias)
 
-        tmp_grad = grad_output.data.transpose(1, 2, 3, 0).reshape(F, -1) # (1, 0, 2, 3) ???
-        grad_weight = (tmp_grad @ x_cols.T).reshape(weight.shape)
+        grad_out_reshaped = grad_output.data.transpose(1, 2, 3, 0).reshape(F, -1)
+        grad_weight = (grad_out_reshaped @ x_cols.T).reshape(weight.shape)
         grad_weight = tensor.Tensor(grad_weight)
         
-        grad_x_cols = weight.data.reshape(F, -1).T @ tmp_grad
+        grad_x_cols = weight.data.reshape(F, -1).T @ grad_out_reshaped
         grad_x_cols.shape = (C, HH, WW, N, OH, OW)
         grad_x = col2im(grad_x_cols, x.shape, HH, WW, pad, stride)
         grad_x = tensor.Tensor(grad_x)
 
         return grad_x, grad_weight, grad_bias
-
-
-class MaxPool2d(Function):
-    @staticmethod
-    def forward(ctx, x, pool_size, stride):
-        N, C, H, W = x.shape
-        HH, WW = pool_size
-        OH, OW = get_conv2d_output_size(H, W, pool_size, stride, 0)
-
-        x_reshaped = x.data.reshape(N * C, 1, H, W)
-        x_cols = im2col(x_reshaped, HH, WW, 0, stride)
-
-        max_idx = np.argmax(x_cols, axis=0)
-        res = x_cols[max_idx, range(max_idx.size)]
-        res = res.reshape(OH, OW, N, C).transpose(2, 3, 0, 1)
-        
-        res = tensor.Tensor(res, requires_grad=x.requires_grad, is_leaf=not x.requires_grad)
-        
-        ctx.x_cols = x_cols
-        ctx.max_idx = max_idx
-        ctx.dims = (N, C, H, W, HH, WW)
-        ctx.save_for_backward(x)
-
-        return res   
-
-    @staticmethod
-    def backward(ctx, grad_output):
-        x_cols, max_idx = ctx.x_cols, ctx.max_idx
-        N, C, H, W, HH, WW = ctx.dims
-        x = ctx.saved_tensors[0]
-
-        grad_x_cols = np.zeros_like(x_cols)
-        grad_out_reshaped = grad_output.data.transpose(2, 3, 0, 1).ravel()
-        grad_x_cols[max_idx, range(max_idx.size)] = grad_out_reshaped
-
-        grad_x = col2im(grad_x_cols, (N * C, 1, H, W), HH, WW, 0, stride)
-        grad_x = grad_x.reshape(x.shape)
-
-        return tensor.Tensor(grad),

@@ -45,14 +45,12 @@ The repo will be updated regularly with new features and examples.
 ## TODO
 
 - Cython-accelerated computations: autograd engine, tensor class and Conv2d
-- Visualization tool
-- Improve comments and reorganize folders
-- Convolutions: AveragePool
-- Resblocks
 - GPU support
-- Attention mechanism for computer vision (CBAM), Transformer...
-- Schedulers: Warmup, Cosine Annealing, 
-- Interpretability tools: GradCAM, ...
+- Visualization tool
+- Improve comments and code layout
+- Convolutions: AveragePool
+- Interpretability tools: GradCAM, Attention visualizer...
+- Code a code example with EfficientNet-B0, DistilBERT
 
 
 ## License

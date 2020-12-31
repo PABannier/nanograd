@@ -368,7 +368,7 @@ class MaxPool2d(Module):
     r"""
         Performs a max pooling operation after a 2d convolution 
     """
-    def __init__(self, kernel_size, stride=1):
+    def __init__(self, kernel_size, stride=2):
         super().__init__()
         self.kernel_size = kernel_size if isinstance(kernel_size, tuple) else (kernel_size, kernel_size)
         self.stride = stride
@@ -381,7 +381,27 @@ class MaxPool2d(Module):
             Returns:
                 Tensor: (batch_size, channel, out_width, out_height)
         """
-        return F.MaxPool2d.apply(x, self.kernel_size, self.stride)
+        return x.max_pool2d(self.kernel_size)
+
+
+class AvgPool2d(Module):
+    r"""
+        Performs an average pooling operation after a 2d convolution
+    """
+    def __init__(self, kernel_size, stride=2):
+        super().__init__()
+        self.kernel_size = kernel_size if isinstance(kernel_size, tuple) else (kernel_size, kernel_size)
+        self.stride = stride
+    
+    def forward(self, x):
+        """
+            Args:
+                x (Tensor): (batch_size, channel, in_width, in_height)
+            
+            Returns:
+                Tensor: (batch_size, channel, out_width, out_channel)
+        """
+        return x.avg_pool2d(self.kernel_size)
 
 
 class Flatten(Module):
@@ -438,10 +458,9 @@ class Dropout(Module):
     def forward(self, x):
         if self.is_train:
             if self.mask is None:
-                val = np.random.binomial(1, self.p, size=x.shape)
+                val = np.random.binomial(1, 1.0 - self.p, size=x.shape)
                 self.mask = Tensor(val)
             return x * self.mask
-        
         return x
 
 

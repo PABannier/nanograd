@@ -306,9 +306,44 @@ def test_mean():
     c = a.mean(1)
     c_torch = a_torch.mean(1)
 
+    c_torch.sum().backward()
+    b_torch.sum().backward()
+
+    c.backward()
+    b.backward()
+
     check_val_and_grad(a, a_torch)
     check_val_and_grad(b, b_torch)
     check_val_and_grad(c, c_torch)
+
+
+def test_slice():
+    a = Tensor.normal(0, 1, (30, 40, 20, 10), requires_grad=True)
+    a_torch = create_identical_torch_tensor(a)
+
+    b = a[10:20, :, :12, 5:]
+    b_torch = a_torch[10:20, :, :12, 5:]
+
+    b_torch.sum().backward()
+    b.backward()
+
+    check_val_and_grad(a, a_torch)
+    check_val_and_grad(b, b_torch)
+
+
+def test_max():
+    a = Tensor.normal(0, 1, (30, 40, 20, 10), requires_grad=True)
+    a_torch = create_identical_torch_tensor(a)
+
+    b = a.max(axis=3).max(axis=1)
+    b_torch, _ = a_torch.max(axis=3)
+    b_torch, _ = b_torch.max(axis=1)
+
+    b_torch.sum().backward()
+    b.backward()
+
+    check_val_and_grad(a, a_torch)
+    check_val_and_grad(b, b_torch)
 
 
 def test_multiple():

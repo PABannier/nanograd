@@ -107,14 +107,29 @@ def test_conv2d_forward():
 
 
 def test_max_pool_2d_forward():
-    inp = Tensor.normal(0, 1, (16, 3, 20, 20))
+    inp = Tensor.normal(0, 1, (128, 6, 26, 26))
     inp_torch = create_identical_torch_tensor(inp).double()
 
-    model = nnn.Sequential(nnn.MaxPool2d(3, 1))
+    model = nnn.Sequential(nnn.MaxPool2d(kernel_size=(2, 2), stride=2))
     torch_model = get_same_pytorch_mlp(model)
 
     y = model(inp)
     y_torch = torch_model(inp_torch)
+    
+    assert y.shape == y_torch.shape
+    check_val(y, y_torch)
 
+
+def test_avg_pool_2d_forward():
+    inp = Tensor.normal(0, 1, (128, 6, 26, 26))
+    inp_torch = create_identical_torch_tensor(inp).double()
+
+    model = nnn.Sequential(nnn.AvgPool2d(kernel_size=(2, 2), stride=2))
+    torch_model = get_same_pytorch_mlp(model)
+
+    y = model(inp)
+    y_torch = torch_model(inp_torch)
+    
+    assert y.shape == y_torch.shape
     check_val(y, y_torch)
 

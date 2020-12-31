@@ -1,15 +1,16 @@
 import numpy as np
 import tensor
+from nanograd.tensor import Tensor
 from autograd_engine import Function
 from nn.conv_ops import (get_conv1d_output_size, get_conv2d_output_size, 
                          get_im2col_indices, im2col, col2im)
 
 
-def sigmoid(x):
+def sigmoid(x:np.ndarray) -> np.ndarray:
     return 1 / (1 + np.exp(-x))
 
 
-def unbroadcast(grad, shape, to_keep=0):
+def unbroadcast(grad:np.ndarray, shape:tuple, to_keep:int=0) -> np.ndarray:
     while len(grad.shape) != len(shape):
         grad = grad.sum(axis=0)
     for i in range(len(shape) - to_keep):
@@ -18,16 +19,17 @@ def unbroadcast(grad, shape, to_keep=0):
     return grad
 
 
-def cross_entropy(predicted, target):
-    """Calculates Cross Entropy Loss (XELoss) between logits and true labels.
-    For MNIST, don't call this function directly; use nn.loss.CrossEntropyLoss instead.
+def cross_entropy(predicted:Tensor, target:Tensor) -> Tensor:
+    r"""
+        Calculates Cross Entropy Loss (XELoss) between logits and true labels.
+        For MNIST, don't call this function directly; use nn.loss.CrossEntropyLoss instead.
 
-    Args:
-        predicted (Tensor): (batch_size, num_classes) logits
-        target (Tensor): (batch_size,) true labels
+        Args:
+            predicted (Tensor): (batch_size, num_classes) logits
+            target (Tensor): (batch_size,) true labels
 
-    Returns:
-        Tensor: the loss as a float, in a tensor of shape ()
+        Returns:
+            Tensor: the loss as a float, in a tensor of shape ()
     """
     batch_size, num_classes = predicted.shape
     labels = to_one_hot(target, num_classes)
@@ -40,22 +42,23 @@ def cross_entropy(predicted, target):
     return nll_loss
 
 
-def to_one_hot(arr, num_classes):
-    """Converts a tensor of classes to one-hot, useful in XELoss
+def to_one_hot(arr:Tensor, num_classes:int) -> Tensor:
+    """
+        Converts a tensor of classes to one-hot, useful in XELoss
 
-    Example:
-    >>> to_one_hot(Tensor(np.array([1, 2, 0, 0])), 3)
-    [[0, 1, 0],
-     [0, 0, 1],
-     [1, 0, 0],
-     [1, 0, 0]]
+        Example:
+        >>> to_one_hot(Tensor(np.array([1, 2, 0, 0])), 3)
+        [[0, 1, 0],
+        [0, 0, 1],
+        [1, 0, 0],
+        [1, 0, 0]]
 
-    Args:
-        arr (Tensor): Condensed tensor of label indices
-        num_classes (int): Number of possible classes in dataset
-                           For instance, MNIST would have `num_classes==10`
-    Returns:
-        Tensor: one-hot tensor
+        Args:
+            arr (Tensor): Condensed tensor of label indices
+            num_classes (int): Number of possible classes in dataset
+                            For instance, MNIST would have `num_classes==10`
+        Returns:
+            Tensor: one-hot tensor
     """
     arr = arr.data.astype(int)
     a = np.zeros((arr.shape[0], num_classes))
@@ -64,10 +67,19 @@ def to_one_hot(arr, num_classes):
 
 
 def inner_slice(x, indices):
-  padding = [(max(0, -p[0]), max(0, p[1]-x.shape[i])) for i, p in enumerate(indices)]
-  x = np.pad(x, padding, mode="constant")
-  slices = [(p[0]+padding[i][0], p[1]+padding[i][0]) for i, p in enumerate(indices)]
-  return x[tuple([slice(x[0], x[1], None) for x in slices])]
+    """
+        Helper function to slice a Tensor
+
+        Args:
+            x (np.ndarray): array to slice
+            indices (list): list of indices 
+        
+        ..note: Length must match the number of dimensions of x
+    """
+    padding = [(max(0, -p[0]), max(0, p[1]-x.shape[i])) for i, p in enumerate(indices)]
+    x = np.pad(x, padding, mode="constant")
+    slices = [(p[0]+padding[i][0], p[1]+padding[i][0]) for i, p in enumerate(indices)]
+    return x[tuple([slice(x[0], x[1], None) for x in slices])]
 
 
 class Slice(Function):
@@ -80,8 +92,7 @@ class Slice(Function):
         is_leaf = not a.requires_grad
 
         out = inner_slice(a.data, indices)
-        ctx.shape = a.shape
-        ctx.indices = indices
+        ctx.shape, ctx.indices = a.shape, indices
 
         return tensor.Tensor(out, requires_grad=requires_grad, is_leaf=is_leaf)
     
@@ -90,7 +101,7 @@ class Slice(Function):
         shape, fwd_indices = ctx.shape, ctx.indices
         indices = [(0-p[0], grad_output.shape[i]+(shape[i]-p[1])) for i, p in enumerate(fwd_indices)]
         out = inner_slice(grad_output.data, indices)
-        return tensor.Tensor(out),
+        return tensor.Tensor(out), None
 
 
 class Transpose(Function):
@@ -136,8 +147,7 @@ class Max(Function):
         out = np.amax(a.data, axis=None if axis is None else tuple(axis), keepdims=True) 
 
         ctx.save_for_backward(a)
-        ctx.axis = axis
-        ctx.out = out
+        ctx.axis, ctx.out = axis, out
 
         if axis is not None:
             out = out.reshape([a.shape[i] for i in range(len(a.shape)) if i not in axis])
@@ -153,7 +163,7 @@ class Max(Function):
         ret2 = (inp.data == out.reshape(shape))
         div = ret2.sum(axis=None if axis is None else tuple(axis), keepdims=True) 
         out = ret2 * (grad_output.reshape(shape)).data / div
-        return tensor.Tensor(out), 
+        return tensor.Tensor(out), None
 
 
 class Log(Function):
@@ -191,7 +201,7 @@ class Exp(Function):
         a = ctx.saved_tensors[0]
         grad_a = grad_output.data * np.exp(a.data)
         return tensor.Tensor(grad_a), None
-        
+
 
 class Add(Function):
     @staticmethod

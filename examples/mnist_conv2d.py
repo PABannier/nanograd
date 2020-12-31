@@ -12,6 +12,7 @@ from tqdm import tqdm
 
 from utils.utils import load_mnist
 
+
 class ConvBobNet(nn.Module):
     def __init__(self):
         super(ConvBobNet, self).__init__()
@@ -24,7 +25,7 @@ class ConvBobNet(nn.Module):
 
         self.block2 = nn.Sequential(
             nn.Flatten(),
-            nn.Linear(3750, 128),
+            nn.Linear(1014, 128),
             nn.ReLU(),
             nn.Dropout(0.5),
             nn.Linear(128, 10)

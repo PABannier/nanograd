@@ -30,6 +30,7 @@ is built with basic features to train neural nets: basic ops, layers, weight ini
 
 The repo will be updated regularly with new features and examples.
 
+
 ## Features
 
 - PyTorch-like autodifferentiation engine (dynamically constructed computational graph)
@@ -45,7 +46,7 @@ The repo will be updated regularly with new features and examples.
 ## TODO
 
 - GPU support
-- Visualization tool
+- Visualization tool (activation maps, computational graph visualization...)
 - Improve comments and code layout
 - Interpretability tools: GradCAM, Attention visualizer...
 - Code a code example with EfficientNet-B0, DistilBERT

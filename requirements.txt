@@ -2,4 +2,4 @@ numpy
 tqdm
 torch
 matplotlib
-pytest
+graphviz

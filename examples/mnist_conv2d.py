@@ -5,12 +5,12 @@ import tensor
 import nn.module as nn
 import nn.functional as F
 
-from nn.loss import CrossEntropyLoss
+from nn.module import CrossEntropyLoss
 from optim.optimizer import SGD, Adam, AdamW
 
 from tqdm import tqdm
 
-from utils.utils import load_mnist
+from utils import load_mnist
 
 
 class ConvBobNet(nn.Module):

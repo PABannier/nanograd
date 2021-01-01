@@ -1,6 +1,7 @@
 import numpy as np
 import autograd_engine
 from nn import functional as F
+from viz.comp_graph import CompGraphVisualizer
 
 class Tensor:
     r"""
@@ -23,6 +24,8 @@ class Tensor:
             is_parameter (bool, optional): the Tensor contains trainable parameters. It is useful
                 when building a neural network.
 
+            name (str, optional): A name for the Tensor for visualization purposes.
+
         ..note::
             If the node is gradient-enabled, the grad property is populated with a gradient Tensor
             object during backpropagation.
@@ -31,12 +34,18 @@ class Tensor:
                  data, 
                  requires_grad:bool=False, 
                  is_leaf:bool=True, 
-                 is_parameter:bool=False) -> None:
+                 is_parameter:bool=False,
+                 name:str='no_name',
+                 op:str=None) -> None:
         
         self.data = np.array(data)
         self.requires_grad, self.is_leaf = requires_grad, is_leaf
         self.is_parameter = is_parameter
+
         self.grad, self.grad_fn = None, None
+        self.name, self.op = name, op
+
+        self.children = []
 
         if not self.requires_grad and not self.is_leaf:
             raise Exception("A non-leaf node must be gradient-enabled")
@@ -262,3 +271,20 @@ class Tensor:
     def avg_pool2d(self, kernel_size:tuple=(2, 2)):
         r"""AvgPooling2d operation"""
         return self._pool2d(*kernel_size).mean(axis=(3, 5))
+
+    # ****************************************
+    # ************ Visualization *************
+    # ****************************************
+
+    def plot_forward(self, rankdir="LR"):
+        r"""
+            Plots a forward computational graph
+
+            Args:
+                rankdir (str): LR (left to right) and TB (top to bottom)
+        """
+        visualizer = CompGraphVisualizer()
+        return visualizer.visualize(self, rankdir=rankdir)
+    
+    def plot_backward(self):
+        raise NotImplementedError("Plot backward computational graph not implemented!")

@@ -93,7 +93,11 @@ class Slice(Function):
         out = inner_slice(a.data, indices)
         ctx.shape, ctx.indices = a.shape, indices
 
-        return tensor.Tensor(out, requires_grad=requires_grad, is_leaf=is_leaf)
+        out = tensor.Tensor(out, requires_grad=requires_grad, is_leaf=is_leaf)
+        out.children = [a]
+        out.op = 'slice'
+
+        return out
     
     @staticmethod
     def backward(ctx, grad_output):
@@ -110,9 +114,10 @@ class Transpose(Function):
             raise Exception("Arg for Transpose must be 2D tensor: {}".format(a.shape))
         
         requires_grad = a.requires_grad
-        b = tensor.Tensor(a.data.T, requires_grad=requires_grad, 
-                                    is_leaf=not requires_grad)
-        return b
+        out = tensor.Tensor(a.data.T, requires_grad=requires_grad, is_leaf=not requires_grad)
+        out.children = [a]
+        out.op = 'transpose'
+        return out
 
     @staticmethod
     def backward(ctx, grad_output):
@@ -127,9 +132,10 @@ class Reshape(Function):
 
         ctx.shape = a.shape
         requires_grad = a.requires_grad
-        b = tensor.Tensor(a.data.reshape(shape), requires_grad=requires_grad, 
-                                                 is_leaf=not requires_grad)
-        return b
+        out = tensor.Tensor(a.data.reshape(shape), requires_grad=requires_grad, is_leaf=not requires_grad)
+        out.children = [a]
+        out.op = 'reshape'
+        return out
 
     @staticmethod
     def backward(ctx, grad_output):
@@ -151,7 +157,11 @@ class Max(Function):
         if axis is not None:
             out = out.reshape([a.shape[i] for i in range(len(a.shape)) if i not in axis])
 
-        return tensor.Tensor(out, requires_grad=a.requires_grad, is_leaf=not a.requires_grad)
+        out = tensor.Tensor(out, requires_grad=a.requires_grad, is_leaf=not a.requires_grad)
+        out.children = [a]
+        out.op = 'max'
+
+        return out
     
     @staticmethod
     def backward(ctx, grad_output):
@@ -173,9 +183,10 @@ class Log(Function):
 
         ctx.save_for_backward(a)
         requires_grad = a.requires_grad
-        b = tensor.Tensor(np.log(a.data), requires_grad=requires_grad,
-                                          is_leaf=not requires_grad)
-        return b
+        out = tensor.Tensor(np.log(a.data), requires_grad=requires_grad, is_leaf=not requires_grad)
+        out.children = [a]   
+        out.op = 'log'                
+        return out
 
     @staticmethod
     def backward(ctx, grad_output):
@@ -191,9 +202,10 @@ class Exp(Function):
             
         ctx.save_for_backward(a)
         requires_grad = a.requires_grad
-        b = tensor.Tensor(np.exp(a.data), requires_grad=requires_grad, 
-                                          is_leaf=not requires_grad)
-        return b
+        out = tensor.Tensor(np.exp(a.data), requires_grad=requires_grad, is_leaf=not requires_grad)
+        out.children = [a]
+        out.op = 'exp'
+        return out
     
     @staticmethod
     def backward(ctx, grad_output):
@@ -210,9 +222,10 @@ class Add(Function):
 
         ctx.save_for_backward(a, b)
         requires_grad = a.requires_grad or b.requires_grad
-        c = tensor.Tensor(a.data + b.data, requires_grad=requires_grad, 
-                                           is_leaf=not requires_grad)
-        return c
+        out = tensor.Tensor(a.data + b.data, requires_grad=requires_grad, is_leaf=not requires_grad)
+        out.children = [a, b]
+        out.op = 'add'
+        return out
 
     @staticmethod
     def backward(ctx, grad_output):
@@ -241,7 +254,10 @@ class Sum(Function):
         else:
             out = a.data.sum(axis=axis, keepdims=keepdims)
 
-        return tensor.Tensor(out, requires_grad=a.requires_grad, is_leaf=not a.requires_grad)
+        out = tensor.Tensor(out, requires_grad=a.requires_grad, is_leaf=not a.requires_grad)
+        out.children = [a]
+        out.op = 'sum'
+        return out
     
     @staticmethod
     def backward(ctx, grad_output):
@@ -262,9 +278,10 @@ class Neg(Function):
         if not type(a).__name__ == "Tensor":
             raise Exception(f"Only neg of tensor is supported. Got: {type(a).__name__}")
 
-        b = tensor.Tensor(-a.data, requires_grad=a.requires_grad,
-                                    is_leaf=not a.requires_grad)
-        return b
+        out = tensor.Tensor(-a.data, requires_grad=a.requires_grad, is_leaf=not a.requires_grad)
+        out.children = [a]
+        out.op = 'neg'
+        return out
     
     @staticmethod
     def backward(ctx, grad_output):
@@ -283,9 +300,10 @@ class MatMul(Function):
         ctx.save_for_backward(a, b)
         requires_grad = a.requires_grad or b.requires_grad
 
-        c = tensor.Tensor(np.matmul(a.data, b.data), requires_grad=requires_grad, \
-                                                      is_leaf=not requires_grad)
-        return c
+        out = tensor.Tensor(np.matmul(a.data, b.data), requires_grad=requires_grad, is_leaf=not requires_grad)
+        out.children = [a, b]
+        out.op = 'matmul'
+        return out
     
     @staticmethod
     def backward(ctx, grad_output):
@@ -312,9 +330,10 @@ class Pow(Function):
 
         ctx.save_for_backward(a)
         ctx.exp = exp
-        c = tensor.Tensor(out, requires_grad=a.requires_grad, \
-                               is_leaf=not a.requires_grad)
-        return c
+        out = tensor.Tensor(out, requires_grad=a.requires_grad, is_leaf=not a.requires_grad)
+        out.children = [a]
+        out.op = 'pow'
+        return out
     
     @staticmethod
     def backward(ctx, grad_output):
@@ -334,9 +353,10 @@ class Mul(Function):
         ctx.save_for_backward(a, b)
         requires_grad = a.requires_grad or b.requires_grad
 
-        c = tensor.Tensor(np.multiply(a.data, b.data), requires_grad=requires_grad, \
-                                                        is_leaf=not requires_grad)
-        return c
+        out = tensor.Tensor(np.multiply(a.data, b.data), requires_grad=requires_grad, is_leaf=not requires_grad)
+        out.children = [a, b]
+        out.op = 'mul'
+        return out
     
     @staticmethod
     def backward(ctx, grad_output):
@@ -359,9 +379,10 @@ class ReLU(Function):
 
         ctx.save_for_backward(a)
 
-        c = tensor.Tensor(np.maximum(a.data, 0), requires_grad=a.requires_grad, \
-                                                 is_leaf=not a.requires_grad)
-        return c
+        out = tensor.Tensor(np.maximum(a.data, 0), requires_grad=a.requires_grad, is_leaf=not a.requires_grad)
+        out.children = [a]
+        out.op = 'relu'
+        return out
     
     @staticmethod
     def backward(ctx, grad_output):
@@ -378,10 +399,10 @@ class Sigmoid(Function):
             raise Exception("Sigmoid can only be applied to tensors")
 
         ctx.save_for_backward(a)
-
-        c = tensor.Tensor(sigmoid(a.data), requires_grad=a.requires_grad, \
-                                           is_leaf=not a.requires_grad)
-        return c
+        out = tensor.Tensor(sigmoid(a.data), requires_grad=a.requires_grad, is_leaf=not a.requires_grad)
+        out.children = [a]
+        out.op = 'sigmoid'
+        return out
     
     @staticmethod
     def backward(ctx, grad_output):
@@ -398,9 +419,10 @@ class Tanh(Function):
 
         ctx.save_for_backward(a)
 
-        c = tensor.Tensor(np.tanh(a.data), requires_grad=a.requires_grad, \
-                                           is_leaf=not a.requires_grad)
-        return c
+        out = tensor.Tensor(np.tanh(a.data), requires_grad=a.requires_grad, is_leaf=not a.requires_grad)
+        out.children = [a]
+        out.op = 'tanh'
+        return out
     
     @staticmethod
     def backward(ctx, grad_output):
@@ -452,7 +474,10 @@ class Conv1d(Function):
         ctx.x_cols = x_cols
         ctx.stride, ctx.pad = stride, pad
 
-        return tensor.Tensor(out, requires_grad=x.requires_grad, is_leaf=not x.requires_grad)
+        out = tensor.Tensor(out, requires_grad=x.requires_grad, is_leaf=not x.requires_grad)
+        out.children = [x, weight, bias]
+        out.op = 'conv1d'
+        return out
     
     @staticmethod
     def backward(ctx, grad_output):
@@ -523,8 +548,12 @@ class Conv2d(Function):
         ctx.save_for_backward(x, weight, bias)
         ctx.x_cols = x_cols
         ctx.stride, ctx.pad = stride, pad
+
+        out = tensor.Tensor(out, requires_grad=x.requires_grad, is_leaf=not x.requires_grad)
+        out.children = [x, weight, bias]
+        out.op = 'conv2d'
         
-        return tensor.Tensor(out, requires_grad=x.requires_grad, is_leaf=not x.requires_grad)
+        return out
     
     @staticmethod
     def backward(ctx, grad_output):

@@ -79,30 +79,6 @@ def get_im2col_indices(x_shape:int, field_height:int,
     return (k, i, j)
 
 
-def im2col(x:np.ndarray, field_height:int, field_width:int, 
-           padding:int, stride:int) -> np.ndarray:
-    r"""
-        Performs im2col transform
-
-        Args:
-            x (np.ndarray): array
-            field_height (int): height of the operation
-            field_width (int): width of the operation
-            padding (int): padding before the operation
-            stride (int): stride of the operator 
-    """
-    p = padding
-    x_padded = np.pad(x, ((0, 0), (0, 0), (p, p), (p, p)), mode='constant')
-
-    k, i, j = get_im2col_indices(x.shape, field_height, field_width, padding,
-                                 stride)
-
-    cols = x_padded[:, k, i, j]
-    C = x.shape[1]
-    cols = cols.transpose(1, 2, 0).reshape(field_height * field_width * C, -1)
-    return cols
-
-
 def col2im(cols:np.ndarray, x_shape:tuple, field_height:int, 
            field_width:int, padding:int, stride:int) -> np.ndarray:
     r"""
@@ -123,7 +99,7 @@ def col2im(cols:np.ndarray, x_shape:tuple, field_height:int,
                                  stride)
     cols_reshaped = cols.reshape(C * field_height * field_width, -1, N)
     cols_reshaped = cols_reshaped.transpose(2, 0, 1)
-    np.add.at(x_padded, (slice(None), k, i, j), cols_reshaped)
+    np.add.at(x_padded, (slice(None), k, i, j), cols_reshaped) # Very slow
     if padding == 0:
         return x_padded
     return x_padded[:, :, padding:-padding, padding:-padding]

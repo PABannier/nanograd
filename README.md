@@ -45,9 +45,9 @@ The repo will be updated regularly with new features and examples.
 
 ## TODO
 
+- Enhance Conv2d backward pass
 - GPU support
 - Visualization tool (activation maps, computational graph visualization...)
-- Improve comments and code layout
 - Interpretability tools: GradCAM, Attention visualizer...
 - Code a code example with EfficientNet-B0, DistilBERT
 

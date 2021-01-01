@@ -1,9 +1,8 @@
 import numpy as np
 import tensor
-from nanograd.tensor import Tensor
 from autograd_engine import Function
 from nn.conv_ops import (get_conv1d_output_size, get_conv2d_output_size, 
-                         get_im2col_indices, im2col, col2im)
+                         get_im2col_indices, col2im)
 
 
 def sigmoid(x:np.ndarray) -> np.ndarray:
@@ -19,7 +18,7 @@ def unbroadcast(grad:np.ndarray, shape:tuple, to_keep:int=0) -> np.ndarray:
     return grad
 
 
-def cross_entropy(predicted:Tensor, target:Tensor) -> Tensor:
+def cross_entropy(predicted, target):
     r"""
         Calculates Cross Entropy Loss (XELoss) between logits and true labels.
         For MNIST, don't call this function directly; use nn.loss.CrossEntropyLoss instead.
@@ -42,7 +41,7 @@ def cross_entropy(predicted:Tensor, target:Tensor) -> Tensor:
     return nll_loss
 
 
-def to_one_hot(arr:Tensor, num_classes:int) -> Tensor:
+def to_one_hot(arr, num_classes:int):
     """
         Converts a tensor of classes to one-hot, useful in XELoss
 
@@ -546,7 +545,7 @@ class Conv2d(Function):
         
         grad_x_cols = weight.data.reshape(F, -1).T @ grad_out_reshaped
         grad_x_cols.shape = (C, HH, WW, N, OH, OW)
-        grad_x = col2im(grad_x_cols, x.shape, HH, WW, pad, stride)
+        grad_x = col2im(grad_x_cols, x.shape, HH, WW, pad, stride) # Needs to be optimized
         grad_x = tensor.Tensor(grad_x)
 
         return grad_x, grad_weight, grad_bias

@@ -49,14 +49,7 @@ Inspired from <a href="https://github.com/geohot/tinygrad">geohot's tinygrad</a>
 
 #### Basic tensor calculations
 
-<table>
-<tr>
-<th>PyTorch</th>
-<th>Nanograd</th>
-</tr>
-<tr>
-<td>
-<pre>
+**PyTorch**
 
 ```python
 a = torch.empty((30, 30, 2))
@@ -78,16 +71,11 @@ print(a.grad)
 print(b.grad)
 ```
 
-</pre>
-</td>
-<td>
-<pre>
+**Nanograd**
 
 ```python
-a = Tensor.normal(3, 4, (30, 30, 2), 
-                  requires_grad=True)
-b = Tensor.normal(10, 2, (30, 30, 1), 
-                  requires_grad=True)
+a = Tensor.normal(3, 4, (30, 30, 2), requires_grad=True)
+b = Tensor.normal(10, 2, (30, 30, 1), requires_grad=True)
 
 c = a + b
 d = c.relu()
@@ -100,77 +88,6 @@ print(a.grad)
 print(b.grad)
 ```
 
-</pre>
-</td>
-</tr>
-</table>
-
-
-#### Defining a model
-
-<table>
-<tr>
-<th>PyTorch</th>
-<th>Nanograd</th>
-</tr>
-<tr>
-<td>
-<pre>
-
-```python
-class ANet(nn.Module):
-    def __init__(self):
-        super(ANet, self).__init__()
-
-        self.block1 = nn.Sequential(
-            nn.Linear(784, 128),
-            nn.ReLU()
-        )
-
-        self.block2 = nn.Sequential(
-            nn.Dropout(0.5),
-            nn.Linear(128, 10),
-            nn.ReLU()
-        )
-    
-    def forward(self, x):
-        x = self.block1(x)
-        x = self.block2(x)
-        return x
-```
-
-</pre>
-</td>
-<td>
-<pre>
-
-```python
-class ANet(nn.Module):
-    def __init__(self):
-        super(ANet, self).__init__()
-
-        self.block1 = nn.Sequential(
-            nn.Linear(784, 128),
-            nn.ReLU()
-        )
-
-        self.block2 = nn.Sequential(
-            nn.Dropout(0.5),
-            nn.Linear(128, 10),
-            nn.ReLU()
-        )
-    
-    def forward(self, x):
-        x = self.block1(x)
-        x = self.block2(x)
-        return x
-```
-</pre>
-</td>
-</tr>
-</table>
-
-It is identical!
 
 ### Training a CNN on MNIST
 

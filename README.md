@@ -57,7 +57,6 @@ The repo will be updated regularly with new features and examples.
 <pre>
 
 ```python
-
 a = torch.empty((30, 30, 2)).normal_(mean=3, std=4)
 b = torch.empty((30, 30, 1)).normal_(mean=10, std=2)
 
@@ -73,15 +72,14 @@ f.sum().backward()
 
 print(a.grad)
 print(b.grad)
-
 ```
 
 </pre>
 </td>
 <td>
+<pre>
 
 ```python
-
 a = Tensor.normal(3, 4, (30, 30, 2), requires_grad=True)
 b = Tensor.normal(10, 2, (30, 30, 1), requires_grad=True)
 
@@ -94,9 +92,9 @@ f.backward()
 
 print(a.grad)
 print(b.grad)
-
 ```
 
+</pre>
 </td>
 </tr>
 </table>
@@ -138,6 +136,7 @@ class ANet(nn.Module):
 </pre>
 </td>
 <td>
+<pre>
 
 ```python
 class ANet(nn.Module):
@@ -160,7 +159,7 @@ class ANet(nn.Module):
         x = self.block2(x)
         return x
 ```
-
+</pre>
 </td>
 </tr>
 </table>

@@ -4,30 +4,30 @@ import nn.functional as F
 import numpy as np
 
 
-def init_weights(tensor:Tensor, weight_initialization:str, fan_mode:str="fan_in") -> Tensor:
-    assert isinstance(tensor, Tensor), f"Only Tensor objects are accepted. Got {type(layer).__name__}"
+def init_weights(shape:tuple, weight_initialization:str, fan_mode:str="fan_in", **kwargs) -> Tensor:
+    assert type(shape) == tuple, f"Shape must be a tuple. Got {type(shape).__name__}."
     assert fan_mode in ["fan_in", "fan_out"], "Wrong fan mode. Only fan_in and fan_out supported."
 
-    out_features, in_features = tensor.shape[0], tensor.shape[1]
+    out_features, in_features = shape[0], shape[1]
 
     if weight_initialization == "kaiming_normal":
-        std = np.sqrt(1 / in_features) if fan_mode == "fan_in" else np.sqrt(1.0 / out_features)
-        return Tensor.normal(0.0, std, tensor.shape, requires_grad=tensor.requires_grad, \
-                                                     is_parameter=tensor.is_parameter)
+        std = np.sqrt(1.0 / in_features) if fan_mode == "fan_in" else np.sqrt(1.0 / out_features)
+        return Tensor.normal(0.0, std, shape, **kwargs)
+
     elif weight_initialization == "kaiming_uniform":
-        bound = np.sqrt(3 / in_features) if fan_mode == "fan_in" else np.sqrt(3.0 / out_features)
-        weight = np.random.uniform(-bound, bound, tensor.shape)
-        return Tensor(weight, requires_grad=tensor.requires_grad, \
-                              is_parameter=not tensor.requires_grad)
+        bound = np.sqrt(3.0 / in_features) if fan_mode == "fan_in" else np.sqrt(3.0 / out_features)
+        weight = np.random.uniform(-bound, bound, shape)
+        return Tensor(weight, **kwargs)
+
     elif weight_initialization == "glorot_normal":
         std = np.sqrt(2.0 / (in_features + out_features))
-        return Tensor.normal(0.0, std, tensor.shape, requires_grad=tensor.requires_grad, \
-                                                     is_parameter=tensor.is_parameter)
+        return Tensor.normal(0.0, std, shape, **kwargs)
+
     elif weight_initialization == "glorot_uniform":
         bound = np.sqrt(6.0 / (in_features + out_features))
-        weight = np.random.uniform(-bound, bound, tensor.shape) 
-        return Tensor(weight, requires_grad=tensor.requires_grad, \
-                              is_parameter=not tensor.requires_grad)
+        weight = np.random.uniform(-bound, bound, shape) 
+        return Tensor(weight, **kwargs)
+
     else:
         raise Exception("Unknown weight initialization methods. Only Glorot and Kaiming are available.")
 
@@ -181,9 +181,12 @@ class Linear(Module):
         self.in_features = in_features
         self.out_features = out_features
 
-        self.weight = Tensor.zeros((self.out_features, self.in_features), requires_grad=True, is_parameter=True)
-        self.weight = init_weights(self.weight, weight_initialization, fan_mode)
-        self.bias = Tensor.zeros(self.out_features, requires_grad=True, is_parameter=True)
+        self.weight = init_weights(
+            (self.out_features, self.in_features), weight_initialization, fan_mode,
+            requires_grad=True, is_parameter=True, name="lin_weight")
+
+        self.bias = Tensor.zeros(self.out_features, requires_grad=True, 
+                                 is_parameter=True, name="lin_bias")
 
     def forward(self, x:Tensor) -> Tensor:
         r"""
@@ -215,12 +218,16 @@ class BatchNorm1d(Module):
         self.momentum = Tensor(momentum)
 
         # To make the final output affine
-        self.gamma = Tensor(np.ones((self.num_features,)), requires_grad=True, is_parameter=True)
-        self.beta = Tensor(np.zeros((self.num_features,)), requires_grad=True, is_parameter=True)
+        self.gamma = Tensor(np.ones((self.num_features,)), 
+                                    requires_grad=True, is_parameter=True, name="bn_gamma")
+        self.beta = Tensor(np.zeros((self.num_features,)), 
+                                    requires_grad=True, is_parameter=True, name="bn_beta")
 
         # Running mean and var
-        self.running_mean = Tensor(np.zeros(self.num_features,), requires_grad=False, is_parameter=False)
-        self.running_var = Tensor(np.ones(self.num_features,), requires_grad=False, is_parameter=False)
+        self.running_mean = Tensor(np.zeros(self.num_features,), 
+                                   requires_grad=False, is_parameter=False, name="bn_running_mean")
+        self.running_var = Tensor(np.ones(self.num_features,), 
+                                  requires_grad=False, is_parameter=False, name="bn_running_var")
 
     def forward(self, x:Tensor) -> Tensor:
         r"""
@@ -267,12 +274,16 @@ class BatchNorm2d(Module):
         self.momentum = Tensor(momentum)
 
         # To make the final output affine
-        self.gamma = Tensor.ones(self.size, requires_grad=True, is_parameter=True)
-        self.beta = Tensor.zeros(self.size, requires_grad=True, is_parameter=True)
+        self.gamma = Tensor.ones(self.size, requires_grad=True, 
+                                 is_parameter=True, name="bn_gamma")
+        self.beta = Tensor.zeros(self.size, requires_grad=True, 
+                                 is_parameter=True, name="bn_beta")
 
         # Running mean and var
-        self.running_mean = Tensor.zeros(self.size, requires_grad=False, is_parameter=False)
-        self.running_var = Tensor.ones(self.size, requires_grad=False, is_parameter=False)
+        self.running_mean = Tensor.zeros(self.size, requires_grad=False, 
+                                         is_parameter=False, name="bn_running_mean")
+        self.running_var = Tensor.ones(self.size, requires_grad=False, 
+                                       is_parameter=False, name="bn_running_var")
 
     def forward(self, x:Tensor) -> Tensor:
         r"""
@@ -327,9 +338,11 @@ class Conv1d(Module):
         self.weight_initialization = weight_initialization
 
         shape = (self.out_channel, self.in_channel, self.kernel_size)
-        self.weight = Tensor.zeros(shape, requires_grad=True, is_parameter=True)
-        self.weight = init_weights(self.weight, self.weight_initialization)
-        self.bias = Tensor.zeros(out_channel, requires_grad=True, is_parameter=True)
+        self.weight = init_weights(shape, self.weight_initialization, 
+                                   requires_grad=True, is_parameter=True, name="conv_weight_1d")
+
+        self.bias = Tensor.zeros(out_channel, requires_grad=True, 
+                                 is_parameter=True, name="conv_bias_1d")
 
     def forward(self, x:Tensor) -> Tensor:
         """
@@ -361,9 +374,11 @@ class Conv2d(Module):
         self.weight_initialization = weight_initialization
 
         shape = (self.out_channel, self.in_channel, *self.kernel_size)
-        self.weight = Tensor.zeros(shape, requires_grad=True, is_parameter=True)
-        self.weight = init_weights(self.weight, self.weight_initialization)
-        self.bias = Tensor.zeros(self.out_channel, requires_grad=True, is_parameter=True)
+
+        self.weight = init_weights(shape, self.weight_initialization, requires_grad=True, 
+                                   is_parameter=True, name="conv_weight_2d")
+        self.bias = Tensor.zeros(self.out_channel, requires_grad=True, 
+                                 is_parameter=True, name="conv_bias_2d")
     
     def forward(self, x:Tensor) -> Tensor:
         """
@@ -460,7 +475,7 @@ class Dropout(Module):
         if self.is_train:
             if self.mask is None:
                 val = np.random.binomial(1, 1.0 - self.p, size=x.shape)
-                self.mask = Tensor(val)
+                self.mask = Tensor(val, name="dropout_mask")
             return x * self.mask
         return x
 

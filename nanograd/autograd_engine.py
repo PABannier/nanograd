@@ -151,7 +151,7 @@ class BackwardFunction:
         self.next_functions = []
 
         # The name of the operation as a string (for convenience)
-        self.function_name = cls.__name__
+        self.function_name = "BackwardFunction"
 
     def apply(self, *args):
         r"""

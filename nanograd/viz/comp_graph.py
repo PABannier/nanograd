@@ -40,9 +40,17 @@ class CompGraphVisualizer:
                 self.edges.add((child, node))
                 self._build_trace(child)
     
+    def _build_graph(self):
+        raise NotImplementedError("build_graph() must be implemented for subclasses!")
+
+
+class ForwardGraphVisualizer(CompGraphVisualizer):
+    def __init__(self):
+        super().__init__()
+    
     def _build_graph(self, rankdir:str='LR'):
         r"""
-            Plots the graph
+            Plots the forward graph
 
             Args:
                 rankdir (str): TB (top to bottom graph) | LR (left to right)
@@ -67,3 +75,32 @@ class CompGraphVisualizer:
         
         return graph
 
+
+class BackwardGraphVisualizer(CompGraphVisualizer):
+    def __init__(self):
+        super().__init__()
+    
+    def _build_graph(self, rankdir:str='LR'):
+        r"""  
+            Plots the backward graph
+
+            Args:
+                rankdir (str): TB (top to bottom graph) | LR (left to right)
+
+            ..note: A node is uniquely identified with the id() function which guarantees
+                    a unique number for every Python object.
+        """
+        assert rankdir in ['LR', 'TB'], f"Unexpected rankdir argument (TB, LR available). Got {rankdir}."
+        graph = Digraph(format='png', graph_attr={'rankdir': rankdir})
+        
+        for n in self.nodes:
+            graph.node(
+                name=str(id(n)), 
+                label=f"{n.name} | {n.shape} | {n.grad_fn.function_name}" if n.grad_fn else f"{n.name} | {n.shape}",
+                shape="record")
+            
+        for n1, n2 in self.edges:
+            graph.edge(str(id(n1)), str(id(n2)))
+        
+        return graph
+        

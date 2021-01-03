@@ -1,7 +1,19 @@
+from enum import Enum
+
 import numpy as np
 import autograd_engine
 from nn import functional as F
-from viz.comp_graph import CompGraphVisualizer
+from viz.comp_graph import ForwardGraphVisualizer, BackwardGraphVisualizer
+
+
+class Device(Enum):
+    r"""
+        Enumeration of the devices supported by
+        Nanograd. 
+        Currently, Nanograd only supports CPU and GPU.
+    """
+    CPU = 1
+    GPU = 2
 
 class Tensor:
     r"""
@@ -24,7 +36,13 @@ class Tensor:
             is_parameter (bool, optional): the Tensor contains trainable parameters. It is useful
                 when building a neural network.
 
+            device (Device, optional): the device to use for computations. Currently, Nanograd only
+                supports CPU and GPU.
+
             name (str, optional): A name for the Tensor for visualization purposes.
+
+            op (str, optional): The operation used to create the tensor. Could be an addition, a substraction,
+                a product.
 
         ..note::
             If the node is gradient-enabled, the grad property is populated with a gradient Tensor
@@ -35,6 +53,7 @@ class Tensor:
                  requires_grad:bool=False, 
                  is_leaf:bool=True, 
                  is_parameter:bool=False,
+                 device:Device=Device.CPU,
                  name:str='no_name',
                  op:str=None) -> None:
         
@@ -42,9 +61,10 @@ class Tensor:
         self.requires_grad, self.is_leaf = requires_grad, is_leaf
         self.is_parameter = is_parameter
 
+        self.device = device
+
         self.grad, self.grad_fn = None, None
         self.name, self.op = name, op
-
         self.children = []
 
         if not self.requires_grad and not self.is_leaf:
@@ -108,6 +128,22 @@ class Tensor:
             identity matrix.
         """
         return cls(np.eye(dim), **kwargs)
+    
+    # ****************************************
+    # *********** CPU/GPU support ************
+    # ****************************************
+
+    def to(self, device:Device):
+        r"""
+            Moves the Tensor to the specified device 
+            
+            Args:
+                device (Device): the destination device
+        """
+        assert device in Device, "Unsupported device. Only CPU and GPU available."
+        self.device = device
+        if self.grad:
+            self.grad.to(device)
 
     # ****************************************
     # *************** Backprop ***************
@@ -124,15 +160,15 @@ class Tensor:
         autograd_engine.backward(self.grad_fn, Tensor.ones(self.shape))
     
     def copy(self):
-        return Tensor(self.data)
+        return Tensor(self.data, device=self.device)
 
     # ****************************************
     # *********** Magic functions ************
     # ****************************************
     
     def __str__(self):
-        return f"NanoTensor({str(self.data)}, " + \
-               f"grad_fn={self.grad_fn.__class__.__name__  if self.grad_fn else None})"
+        return f"<NanoTensor({str(self.data)}, " + \
+               f"grad_fn={self.grad_fn.__class__.__name__  if self.grad_fn else None})>"
     
     def __repr__(self):
         return self.__str__()
@@ -283,8 +319,15 @@ class Tensor:
             Args:
                 rankdir (str): LR (left to right) and TB (top to bottom)
         """
-        visualizer = CompGraphVisualizer()
+        visualizer = ForwardGraphVisualizer()
         return visualizer.visualize(self, rankdir=rankdir)
     
-    def plot_backward(self):
-        raise NotImplementedError("Plot backward computational graph not implemented!")
+    def plot_backward(self, rankdir="LR"):
+        r"""
+            Plots a backward computational graph
+
+            Args:
+                rankdir (str): LR (left to right) and TB (top to bottom)
+        """
+        visualizer = BackwardGraphVisualizer()
+        return visualizer.visualize(self, rankdir=rankdir)

@@ -24,12 +24,14 @@ After verification, nanograd is not a city in Russia...
 
 However, it is a PyTorch-like lightweight deep learning framework. Use it to implement any DL algo you want with little boilerplate code.
 
-Essentially, Nanograd is a continuously updated project. The goal is to implement as many features as possible while using as few abstraction layers as possible (only Numpy functions are allowed). It is mostly about the learning journey and any contribution to the repo is welcome.
+Essentially, Nanograd is a continuously updated project. The goal is to implement as many features as possible while using as few abstraction layers as possible (only Numpy functions are allowed). Any contribution to the repo is welcome.
 
 The library has a built-in auto-differentiation engine that dynamically builds a computational graph. The framework is built with basic features to train neural nets: basic ops, layers, weight initializers, optimizers and loss functions. Additional tools are developed to visualize your network: computational
 graph visualizers or activation map visualizers (SOON!).
 
 The repo will be updated regularly with new features and examples. 
+
+Inspired from <a href="https://github.com/geohot/tinygrad">geohot's tinygrad</a>.
 
 
 ## Features
@@ -57,8 +59,10 @@ The repo will be updated regularly with new features and examples.
 <pre>
 
 ```python
-a = torch.empty((30, 30, 2)).normal_(mean=3, std=4)
-b = torch.empty((30, 30, 1)).normal_(mean=10, std=2)
+a = torch.empty((30, 30, 2))
+         .normal_(mean=3, std=4)
+b = torch.empty((30, 30, 1))
+         .normal_(mean=10, std=2)
 
 a.requires_grad = True
 b.requires_grad = True
@@ -80,8 +84,10 @@ print(b.grad)
 <pre>
 
 ```python
-a = Tensor.normal(3, 4, (30, 30, 2), requires_grad=True)
-b = Tensor.normal(10, 2, (30, 30, 1), requires_grad=True)
+a = Tensor.normal(3, 4, (30, 30, 2), 
+                  requires_grad=True)
+b = Tensor.normal(10, 2, (30, 30, 1), 
+                  requires_grad=True)
 
 c = a + b
 d = c.relu()

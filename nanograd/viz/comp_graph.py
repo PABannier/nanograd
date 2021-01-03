@@ -62,7 +62,8 @@ class ForwardGraphVisualizer(CompGraphVisualizer):
         graph = Digraph(format='png', graph_attr={'rankdir': rankdir})
         
         for n in self.nodes:
-            graph.node(name=str(id(n)), label = f"{n.name} | {n.shape}", shape='record')
+            name = n.name if n.name != "no_name" else (n.op + '_res' if n.op else n.name)
+            graph.node(name=str(id(n)), label = f"{name} | {n.shape}", shape='record')
             if n.op:
                 graph.node(name=str(id(n)) + n.op, label=n.op)
                 graph.edge(str(id(n)) + n.op, str(id(n)))
@@ -94,9 +95,10 @@ class BackwardGraphVisualizer(CompGraphVisualizer):
         graph = Digraph(format='png', graph_attr={'rankdir': rankdir})
         
         for n in self.nodes:
+            name = n.name if n.name != "no_name" else (n.op + '_res' if n.op else n.name)
             graph.node(
                 name=str(id(n)), 
-                label=f"{n.name} | {n.shape} | {n.grad_fn.function_name}" if n.grad_fn else f"{n.name} | {n.shape}",
+                label=f"{name} | {n.shape} | {n.grad_fn.function_name}" if n.grad_fn else f"{name} | {n.shape}",
                 shape="record")
             
         for n1, n2 in self.edges:

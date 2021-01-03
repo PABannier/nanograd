@@ -195,7 +195,9 @@ class Linear(Module):
             Returns:
                 Tensor: (batch_size, out_features)
         """
-        return x @ self.weight.T() + self.bias        
+        out = x @ self.weight.T() + self.bias     
+        out.name = "lin_res"
+        return out   
 
 
 class BatchNorm1d(Module):
@@ -250,7 +252,9 @@ class BatchNorm1d(Module):
         
     def _normalize(self, x, mean, var):
         x_hat = (x - mean) / (var + self.eps).sqrt()
-        return self.gamma * x_hat + self.beta
+        out = self.gamma * x_hat + self.beta
+        out.name = "bn_1d_res"
+        return out
 
 
 class BatchNorm2d(Module):
@@ -316,7 +320,9 @@ class BatchNorm2d(Module):
                 var (Tensor): variance of the tensor
         """
         x_hat = (x - mean.reshape(shape=[1, -1, 1, 1])) / (var + self.eps).sqrt().reshape(shape=[1, -1, 1, 1])
-        return self.gamma.reshape(shape=[1, -1, 1, 1]) * x_hat + self.beta.reshape(shape=[1, -1, 1, 1])
+        out = self.gamma.reshape(shape=[1, -1, 1, 1]) * x_hat + self.beta.reshape(shape=[1, -1, 1, 1])
+        out.name = 'bn_2d_res'
+        return out
 
 
 class Conv1d(Module):
@@ -407,7 +413,9 @@ class MaxPool2d(Module):
             Returns:
                 Tensor: (batch_size, channel, out_width, out_height)
         """
-        return x.max_pool2d(self.kernel_size)
+        out = x.max_pool2d(self.kernel_size)
+        out.name = 'mpool2d_res'
+        return out
 
 
 class AvgPool2d(Module):
@@ -427,7 +435,9 @@ class AvgPool2d(Module):
             Returns:
                 Tensor: (batch_size, channel, out_width, out_channel)
         """
-        return x.avg_pool2d(self.kernel_size)
+        out = x.avg_pool2d(self.kernel_size)
+        out.name = 'avgpool2d_res'
+        return out
 
 
 class Flatten(Module):
@@ -463,7 +473,9 @@ class Flatten(Module):
         """
         dim1 = x.shape[0]
         dim2 = np.prod(x.shape[1:])
-        return x.reshape((dim1, dim2))
+        out = x.reshape((dim1, dim2))
+        out.name = 'flatten_res'
+        return out
 
 
 class Dropout(Module):
@@ -476,7 +488,9 @@ class Dropout(Module):
             if self.mask is None:
                 val = np.random.binomial(1, 1.0 - self.p, size=x.shape)
                 self.mask = Tensor(val, name="dropout_mask")
-            return x * self.mask
+            out = x * self.mask
+            out.name = 'dropout_res'
+            return out
         return x
 
 

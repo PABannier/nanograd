@@ -1,9 +1,25 @@
+# Inspiration: https://github.com/geohot/tinygrad/blob/master/tinygrad/tensor.py
+
 from enum import Enum
+from typing import Union
+
+import pyopencl as cl
 
 import numpy as np
 import autograd_engine
 from nn import functional as F
 from viz.comp_graph import ForwardGraphVisualizer, BackwardGraphVisualizer
+
+
+cl_ctx, cl_queue = None, None
+
+def get_gpu_context_and_queue():
+    global cl_ctx, cl_queue
+    devices = cl.get_platforms()[0].get_devices(device_type=cl.device_type.GPU)
+    if len(devices) == 0:
+        devices = cl.get_platforms()[0].get_devices(device_type=cl.device_type.CPU)
+    cl_ctx = cl.Context(devices=devices)
+    cl_queue = cl.CommandQueue(cl_ctx)
 
 
 class Device(Enum):
@@ -14,6 +30,41 @@ class Device(Enum):
     """
     CPU = 1
     GPU = 2
+
+
+class GPUBuffer:
+    r"""
+        GPUBuffer is a wrapper used for PyOpenCL GPU support to temporarily
+        store a Numpy array. PyOpenCL requires a context and a queue objects.
+
+        Once those objects are defined, PyOpenCL requires arrays used for 
+        computations to be stored into buffers. GPUBuffer is a custom buffer
+        stored in the Tensor class in lieu of the data argument.
+
+        Args:
+            ctx (cl.Context): context object from PyOpenCL
+
+            shape (np.ndarray): shape of the data to be stored
+
+            data (np.ndarray): data to be stored in a buffer before computations
+            on GPU.
+        
+        ..note: GPUBuffer defines a OpenCL buffer object thath as read and write
+        permissions.
+    """
+    def __init__(self, shape, data):
+        self.shape = shape
+        
+        self.buffer = cl.Buffer(
+            ctx,
+            cl.mem_flags.READ_WRITE | (cl.mem_flags.COPY_HOST_PTR if hostbuf is not None else 0),
+            np.prod(self.shape) * 4,
+            hostbuf=data.astype(np.float32).ravel() if data is not None else None
+        )
+    
+    def __repr__(self):
+        return f"<GPUBuffer with shape {self.shape}>"
+
 
 class Tensor:
     r"""
@@ -133,6 +184,34 @@ class Tensor:
     # *********** CPU/GPU support ************
     # ****************************************
 
+    @staticmethod
+    def _move_data(data:Union[np.ndarray, GPUBuffer], device:Device):
+        r"""
+            Moves data to the device specified
+
+            Args:
+                data (np.ndarray or GPUBuffer): data to be moved
+                device (Device): the destination device
+            
+            Returns:
+                data ????
+        """
+        assert device in Device, "Unsupported device. Nanograd only supports CPU and GPU"
+
+        if isinstance(data, GPUBuffer):
+            if device == Device.GPU:
+                return data
+            get_gpu_context_and_queue()
+            cpu_data = np.empty(data.shape, dtype=np.float32)
+            cl.enqueue_copy(cl_ctx, cpu_data, data.buffer, is_blocking=True)
+            return cpu_data
+        elif isinstance(data, np.ndarray):
+            if device == Device.GPU:
+                return GPUBuffer(data.shape, data)
+            return data
+        else:
+            raise TypeError(f"Only Numpy array and GPUBuffer objects can be moved. Got {type(data).__name__}.")
+
     def to(self, device:Device):
         r"""
             Moves the Tensor to the specified device 
@@ -141,7 +220,7 @@ class Tensor:
                 device (Device): the destination device
         """
         assert device in Device, "Unsupported device. Only CPU and GPU available."
-        self.device = device
+        self.data, self.device = self._move_data(self.data, device), device
         if self.grad:
             self.grad.to(device)
 

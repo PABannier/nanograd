@@ -491,7 +491,7 @@ class Dropout(Module):
             out = x * self.mask
             out.name = 'dropout_res'
             return out
-        return x
+        return x * Tensor(1 - self.p, name='dropout_prob')
 
 
 class CrossEntropyLoss(Module):

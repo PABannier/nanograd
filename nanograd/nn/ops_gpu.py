@@ -1,3 +1,4 @@
+# Inspired from: https://github.com/geohot/tinygrad/blob/master/tinygrad/ops_gpu.py
 import numpy as np
 import pyopencl as cl
 
@@ -67,6 +68,13 @@ def get_binary_op_kernel(code, complist):
     float b = y_g["""+idx_exprs[1]+"""];
     res_g[gid0] = """+code+""";\n}"""
 
+def get_unary_op_kernel(code):
+    return """__kernel void unop(__global const float *x_g, __global float *res_g) {
+        int gid = get_global_id(0);
+        float a = x_g[gid];
+        res_g[gid] = """+code+""";
+    }"""
+
 def element_wise_binary_op(ctx, queue, code, x, y):
     n_dims, ret_shape, x_shape, y_shape = compute_output_size(x, y)
     dimension_list, comp_list = compute_broadcasted_dimensions(n_dims, x_shape, y_shape)
@@ -81,6 +89,13 @@ def element_wise_binary_op(ctx, queue, code, x, y):
                x.cl, y.cl, out.cl, *dimension_list, *(prod_list[1:]))
     return out
 
+def unary_op(ctx, queue, code, x):
+    out = GPUBuffer(ctx, x.shape, hostbuf=np.zeros(x.shape, dtype=np.float32))
+    kernel = get_unary_op_kernel(code)
+    prgm = cl.Program(ctx, kernel).build()
+    prgm.unop(queue, [np.prod(out.shape)], None, x.cl, out.cl)
+    return out
+
 # *************************************
 # *********** Forward passes **********
 # *************************************
@@ -90,3 +105,24 @@ def add_forward(ctx, queue, a, b):
 
 def mul_forward(ctx, queue, a, b):
     return element_wise_binary_op(ctx, queue, 'a*b', a, b)
+
+def log_forward(ctx, queue, a):
+    return unary_op(ctx, queue, 'log(a)', a)
+
+def exp_forward(ctx, queue, a):
+    return unary_op(ctx, queue, 'exp(a)', a)
+
+def neg_forward(ctx, queue, a):
+    return unary_op(ctx, queue, '-a', a)
+
+def pow_forward(ctx, queue, a, exp):
+    return unary_op(ctx, queue, f'pow(a, (float){exp})', a)
+
+def relu_forward(ctx, queue, a):
+    return unary_op(ctx, queue, 'max(a, (float)0.)', a)
+
+def sigmoid_forward(ctx, queue, a):
+    return unary_op(ctx, queue, '1.0 / (1 + exp(-a))', a)
+
+def tanh_forward(ctx, queue, a):
+    return unary_op(ctx, queue, '(exp(a) - exp(-a)) / (exp(a) + exp(-a))', a)

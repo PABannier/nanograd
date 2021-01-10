@@ -267,13 +267,13 @@ class Tensor:
         return F.Add.apply(self, other, cl_ctx=cl_ctx, cl_queue=cl_queue)
     
     def __neg__(self):
-        return F.Neg.apply(self)
+        return F.Neg.apply(self, cl_ctx=cl_ctx, cl_queue=cl_queue)
     
     def __sub__(self, other):
         return self + (- other)
 
     def __pow__(self, exp):
-        return F.Pow.apply(self, exp)
+        return F.Pow.apply(self, exp, cl_ctx=cl_ctx, cl_queue=cl_queue)
     
     def __mul__(self, other):
         return F.Mul.apply(self, other, cl_ctx=cl_ctx, cl_queue=cl_queue)
@@ -306,10 +306,10 @@ class Tensor:
         return F.Max.apply(self, axis)
     
     def log(self):
-        return F.Log.apply(self)
+        return F.Log.apply(self, cl_ctx=cl_ctx, cl_queue=cl_queue)
     
     def exp(self):
-        return F.Exp.apply(self)
+        return F.Exp.apply(self, cl_ctx=cl_ctx, cl_queue=cl_queue)
 
     def sqrt(self):
         return self ** (1/2)
@@ -319,13 +319,13 @@ class Tensor:
     # ****************************************
 
     def relu(self):
-        return F.ReLU.apply(self)
+        return F.ReLU.apply(self, cl_ctx=cl_ctx, cl_queue=cl_queue)
     
     def sigmoid(self):
-        return F.Sigmoid.apply(self)
+        return F.Sigmoid.apply(self, cl_ctx=cl_ctx, cl_queue=cl_queue)
 
     def tanh(self):
-        return F.Tanh.apply(self)
+        return F.Tanh.apply(self, cl_ctx=cl_ctx, cl_queue=cl_queue)
     
     # ****************************************
     # ********* Conv/Pool operations *********

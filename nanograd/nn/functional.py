@@ -185,7 +185,14 @@ class Log(Function):
 
         ctx.save_for_backward(a)
         requires_grad = a.requires_grad
-        out = tensor.Tensor(np.log(a.data), requires_grad=requires_grad, is_leaf=not requires_grad)
+
+        if a.device == tensor.Device.CPU:
+            out_data = ops_cpu.log_forward(a.data)
+        else:
+            out_data = ops_gpu.log_forward(ctx.cl_ctx, ctx.cl_queue, a.data)
+
+        out = tensor.Tensor(out_data, requires_grad=requires_grad, 
+                            is_leaf=not requires_grad, device=a.device)
         out.children = [a]   
         out.op = 'log'                
         return out
@@ -204,7 +211,14 @@ class Exp(Function):
             
         ctx.save_for_backward(a)
         requires_grad = a.requires_grad
-        out = tensor.Tensor(np.exp(a.data), requires_grad=requires_grad, is_leaf=not requires_grad)
+
+        if a.device == tensor.Device.CPU:
+            out_data = ops_cpu.exp_forward(a.data)
+        else:
+            out_data = ops_gpu.exp_forward(ctx.cl_ctx, ctx.cl_queue, a.data)
+
+        out = tensor.Tensor(out_data, requires_grad=requires_grad, 
+                            is_leaf=not requires_grad, device=a.device)
         out.children = [a]
         out.op = 'exp'
         return out
@@ -287,7 +301,15 @@ class Neg(Function):
         if not type(a).__name__ == "Tensor":
             raise Exception(f"Only neg of tensor is supported. Got: {type(a).__name__}")
 
-        out = tensor.Tensor(-a.data, requires_grad=a.requires_grad, is_leaf=not a.requires_grad)
+        requires_grad = a.requires_grad
+
+        if a.device == tensor.Device.CPU:
+            out_data = ops_cpu.neg_forward(a.data)
+        else:
+            out_data = ops_gpu.neg_forward(ctx.cl_ctx, ctx.cl_queue, a.data)
+
+        out = tensor.Tensor(out_data, requires_grad=requires_grad, 
+                            is_leaf=not a.requires_grad, device=a.device)
         out.children = [a]
         out.op = 'neg'
         return out
@@ -335,11 +357,18 @@ class Pow(Function):
         if not isinstance(exp, (int, float)):
             raise Exception("Power can only be float or int")
 
-        out = a.data ** exp
-
         ctx.save_for_backward(a)
         ctx.exp = exp
-        out = tensor.Tensor(out, requires_grad=a.requires_grad, is_leaf=not a.requires_grad)
+
+        requires_grad = a.requires_grad
+
+        if a.device == tensor.Device.CPU:
+            out_data = ops_cpu.pow_forward(a.data, exp)
+        else:
+            out_data = ops_gpu.pow_forward(ctx.cl_ctx, ctx.cl_queue, a.data, exp)
+
+        out = tensor.Tensor(out_data, requires_grad=requires_grad, 
+                            is_leaf=not requires_grad, device=a.device)
         out.children = [a]
         out.op = 'pow'
         return out
@@ -394,7 +423,16 @@ class ReLU(Function):
 
         ctx.save_for_backward(a)
 
-        out = tensor.Tensor(np.maximum(a.data, 0), requires_grad=a.requires_grad, is_leaf=not a.requires_grad)
+        requires_grad = a.requires_grad
+        is_leaf = not requires_grad
+
+        if a.device == tensor.Device.CPU:
+            out_data = ops_cpu.relu_forward(a.data)
+        else:
+            out_data = ops_gpu.relu_forward(ctx.cl_ctx, ctx.cl_queue, a.data)
+
+        out = tensor.Tensor(out_data, requires_grad=requires_grad, 
+                            is_leaf=is_leaf, device=a.device)
         out.children = [a]
         out.op = 'relu'
         return out
@@ -414,7 +452,17 @@ class Sigmoid(Function):
             raise Exception("Sigmoid can only be applied to tensors")
 
         ctx.save_for_backward(a)
-        out = tensor.Tensor(sigmoid(a.data), requires_grad=a.requires_grad, is_leaf=not a.requires_grad)
+
+        requires_grad = a.requires_grad
+        is_leaf = not requires_grad
+
+        if a.device == tensor.Device.CPU:
+            out_data = ops_cpu.sigmoid_forward(a.data)
+        else:
+            out_data = ops_gpu.sigmoid_forward(ctx.cl_ctx, ctx.cl_queue, a.data)
+        
+        out = tensor.Tensor(out_data, requires_grad=requires_grad,
+                            is_leaf=is_leaf, device=a.device)
         out.children = [a]
         out.op = 'sigmoid'
         return out
@@ -434,7 +482,16 @@ class Tanh(Function):
 
         ctx.save_for_backward(a)
 
-        out = tensor.Tensor(np.tanh(a.data), requires_grad=a.requires_grad, is_leaf=not a.requires_grad)
+        requires_grad = a.requires_grad
+        is_leaf = not requires_grad
+
+        if a.device == tensor.Device.CPU:
+            out_data = ops_cpu.tanh_forward(a.data)
+        else:
+            out_data = ops_gpu.tanh_forward(ctx.cl_ctx, ctx.cl_queue, a.data)
+        
+        out = tensor.Tensor(out_data, requires_grad=requires_grad,
+                            is_leaf=is_leaf, device=a.device)
         out.children = [a]
         out.op = 'tanh'
         return out

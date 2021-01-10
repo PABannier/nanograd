@@ -35,7 +35,7 @@ class Function:
         raise NotImplementedError("All subclasses must implement backward")
 
     @classmethod
-    def apply(cls, *args):
+    def apply(cls, *args, **kwargs):
         r"""
             Runs forward of subclass and links node to the comp graph.
 
@@ -48,6 +48,14 @@ class Function:
         """
         # Creates BackwardFunction obj representing the current node
         backward_function = BackwardFunction(cls)
+
+        # Gets OpenCL objects
+        try:
+            cl_ctx, cl_queue = kwargs['cl_ctx'], kwargs['cl_queue']
+            backward_function.ctx.cl_ctx = cl_ctx
+            backward_function.ctx.cl_queue = cl_queue
+        except KeyError:
+            pass
 
         # Run subclass's forward with context manager and operation input args
         output_tensor = cls.forward(backward_function.ctx, *args)

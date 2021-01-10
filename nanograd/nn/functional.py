@@ -3,6 +3,8 @@ import tensor
 from autograd_engine import Function
 from nn.conv_ops import (get_conv1d_output_size, get_conv2d_output_size, 
                          get_im2col_indices, col2im)
+import nn.ops_cpu as ops_cpu
+import nn.ops_gpu as ops_gpu
 
 
 def sigmoid(x:np.ndarray) -> np.ndarray:
@@ -219,10 +221,17 @@ class Add(Function):
     def forward(ctx, a, b):
         if not (type(a).__name__ == 'Tensor' and type(b).__name__ == 'Tensor'):
             raise Exception("Both args must be Tensors: {}, {}".format(type(a).__name__, type(b).__name__))
-
+        
         ctx.save_for_backward(a, b)
         requires_grad = a.requires_grad or b.requires_grad
-        out = tensor.Tensor(a.data + b.data, requires_grad=requires_grad, is_leaf=not requires_grad)
+
+        if a.device == tensor.Device.CPU:
+            out_data = ops_cpu.add_forward(a.data, b.data)
+        else:
+            out_data = ops_gpu.add_forward(ctx.cl_ctx, ctx.cl_queue, a.data, b.data)
+
+        out = tensor.Tensor(out_data, requires_grad=requires_grad, 
+                            is_leaf=not requires_grad, device=a.device)
         out.children = [a, b]
         out.op = 'add'
         return out
@@ -353,7 +362,13 @@ class Mul(Function):
         ctx.save_for_backward(a, b)
         requires_grad = a.requires_grad or b.requires_grad
 
-        out = tensor.Tensor(np.multiply(a.data, b.data), requires_grad=requires_grad, is_leaf=not requires_grad)
+        if a.device == tensor.Device.CPU:
+            out_data = ops_cpu.mul_forward(a.data, b.data)
+        else:
+            out_data = ops_gpu.mul_forward(ctx.cl_ctx, ctx.cl_queue, a.data, b.data)
+
+        out = tensor.Tensor(out_data, requires_grad=requires_grad, 
+                            is_leaf=not requires_grad, device=a.device)
         out.children = [a, b]
         out.op = 'mul'
         return out

@@ -153,8 +153,11 @@ f.plot_backward()
 
 ## TODO
 
-- Enhance Conv2d backward pass (**high priority**)
-- GPU support with PyOpenCL
+- Enhance Conv2d backward pass on CPU (**high priority**)
+- GPU forward passes: reduce ops + Slice, transpose
+- GPU backward passes: everything
+- Enhance reduce ops on OpenCL (task paralleling)
+- Keras-like train visualizer
 - Activation map visualizer for CNN
 - Interpretability tools: GradCAM, Attention visualizer...
 - Code example with EfficientNet-B0, DistilBERT

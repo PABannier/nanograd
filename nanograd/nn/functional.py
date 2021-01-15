@@ -10,6 +10,11 @@ import nn.ops_gpu as ops_gpu
 def sigmoid(x:np.ndarray) -> np.ndarray:
     return 1 / (1 + np.exp(-x))
 
+def inner_slice(a, indices):
+    padding = [(max(0, -p[0]), max(0, p[1]-a.shape[i])) for i, p in enumerate(indices)]
+    a = np.pad(a, padding, mode="constant")
+    slices = [(p[0]+padding[i][0], p[1]+padding[i][0]) for i, p in enumerate(indices)]
+    return a[tuple([slice(x[0], x[1], None) for x in slices])]
 
 def unbroadcast(grad:np.ndarray, shape:tuple, to_keep:int=0) -> np.ndarray:
     while len(grad.shape) != len(shape):
@@ -67,35 +72,24 @@ def to_one_hot(arr, num_classes:int):
     return tensor.Tensor(a, requires_grad=True)
 
 
-def inner_slice(x, indices):
-    """
-        Helper function to slice a Tensor
-
-        Args:
-            x (np.ndarray): array to slice
-            indices (list): list of indices 
-        
-        ..note: Length must match the number of dimensions of x
-    """
-    padding = [(max(0, -p[0]), max(0, p[1]-x.shape[i])) for i, p in enumerate(indices)]
-    x = np.pad(x, padding, mode="constant")
-    slices = [(p[0]+padding[i][0], p[1]+padding[i][0]) for i, p in enumerate(indices)]
-    return x[tuple([slice(x[0], x[1], None) for x in slices])]
-
-
 class Slice(Function):
     @staticmethod
     def forward(ctx, a, indices):
         if not type(a).__name__ == 'Tensor':
             raise Exception("Arg for Slice must be tensor: {}".format(type(a).__name__))
 
+        ctx.shape, ctx.indices = a.shape, indices
+
         requires_grad = a.requires_grad
         is_leaf = not a.requires_grad
 
-        out = inner_slice(a.data, indices)
-        ctx.shape, ctx.indices = a.shape, indices
+        if a.device == tensor.Device.CPU:
+            out_data = ops_cpu.slice_forward(a.data, indices)
+        else:
+            out_data = ops_gpu.slice_forward(ctx.cl_ctx, ctx.cl_queue, a.data, indices)
 
-        out = tensor.Tensor(out, requires_grad=requires_grad, is_leaf=is_leaf)
+        out = tensor.Tensor(out_data, requires_grad=requires_grad, 
+                            is_leaf=is_leaf, device=a.device)
         out.children = [a]
         out.op = 'slice'
 
@@ -116,7 +110,15 @@ class Transpose(Function):
             raise Exception("Arg for Transpose must be 2D tensor: {}".format(a.shape))
         
         requires_grad = a.requires_grad
-        out = tensor.Tensor(a.data.T, requires_grad=requires_grad, is_leaf=not requires_grad)
+        is_leaf = not requires_grad
+
+        if a.device == tensor.Device.CPU:
+            out_data = ops_cpu.transpose_forward(a.data)
+        else:
+            out_data = ops_gpu.transpose_forward(ctx.cl_ctx, ctx.cl_queue, a.data)
+
+        out = tensor.Tensor(out_data, requires_grad=requires_grad, 
+                            is_leaf=is_leaf, device=a.device)
         out.children = [a]
         out.op = 'transpose'
         return out
@@ -134,7 +136,15 @@ class Reshape(Function):
 
         ctx.shape = a.shape
         requires_grad = a.requires_grad
-        out = tensor.Tensor(a.data.reshape(shape), requires_grad=requires_grad, is_leaf=not requires_grad)
+        is_leaf = not requires_grad
+
+        if a.device == tensor.Device.CPU:
+            out_data = ops_cpu.reshape_forward(a.data, shape)
+        else:
+            out_data = ops_gpu.reshape_forward(ctx.cl_ctx, ctx.cl_queue, a.data, shape)
+
+        out = tensor.Tensor(out_data, requires_grad=requires_grad, 
+                            is_leaf=is_leaf, device=a.device)
         out.children = [a]
         out.op = 'reshape'
         return out
@@ -151,15 +161,21 @@ class Max(Function):
             raise Exception("Arg for Max must be tensor: {}".format(type(a).__name__))
 
         axis = [axis] if type(axis) == int else axis
-        out = np.amax(a.data, axis=None if axis is None else tuple(axis), keepdims=True) 
 
         ctx.save_for_backward(a)
-        ctx.axis, ctx.out = axis, out
 
-        if axis is not None:
-            out = out.reshape([a.shape[i] for i in range(len(a.shape)) if i not in axis])
+        requires_grad = a.requires_grad
+        is_leaf = not requires_grad
 
-        out = tensor.Tensor(out, requires_grad=a.requires_grad, is_leaf=not a.requires_grad)
+        if a.device == tensor.Device.CPU:
+            out_data = ops_cpu.max_forward(a.data, axis)
+        else:
+            out_data = ops_gpu.max_forward(ctx.cl_ctx, ctx.cl_queue, a.data, axis)
+        
+        ctx.axis, ctx.out = axis, out_data
+
+        out = tensor.Tensor(out_data, requires_grad=requires_grad, 
+                            is_leaf=is_leaf, device=a.device)
         out.children = [a]
         out.op = 'max'
 
@@ -272,12 +288,16 @@ class Sum(Function):
         ctx.axis = axis
         ctx.save_for_backward(a)
 
-        if axis is None:
-            out = np.array(a.data.sum(keepdims=keepdims))
-        else:
-            out = a.data.sum(axis=axis, keepdims=keepdims)
+        requires_grad = a.requires_grad
+        is_leaf = not requires_grad
 
-        out = tensor.Tensor(out, requires_grad=a.requires_grad, is_leaf=not a.requires_grad)
+        if a.device == tensor.Device.CPU:
+            out_data = ops_cpu.sum_forward(a.data, axis, keepdims)
+        else:
+            out_data = ops_gpu.sum_forward(ctx.cl_ctx, ctx.cl_queue, a.data, axis, keepdims)
+
+        out = tensor.Tensor(out_data, requires_grad=requires_grad, 
+                            is_leaf=is_leaf, device=a.device)
         out.children = [a]
         out.op = 'sum'
         return out
@@ -330,8 +350,15 @@ class MatMul(Function):
 
         ctx.save_for_backward(a, b)
         requires_grad = a.requires_grad or b.requires_grad
+        is_leaf = not requires_grad
 
-        out = tensor.Tensor(np.matmul(a.data, b.data), requires_grad=requires_grad, is_leaf=not requires_grad)
+        if a.device == tensor.Device.CPU:
+            out_data = ops_cpu.matmul_forward(a.data, b.data)
+        else:
+            out_data = ops_gpu.matmul_forward(ctx.cl_ctx, ctx.cl_queue, a.data, b.data)
+
+        out = tensor.Tensor(out_data, requires_grad=requires_grad, 
+                            is_leaf=is_leaf, device=a.device)
         out.children = [a, b]
         out.op = 'matmul'
         return out

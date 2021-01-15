@@ -162,3 +162,29 @@ def test_tanh_forward():
     b.to(Device.CPU)
 
     check_val(b, b_torch)
+
+def test_sum_full_reduce_forward():
+    a = Tensor.normal(0, 1, (30, 30, 30))
+    a_torch = create_identical_torch_tensor(a)
+
+    a.to(Device.GPU)
+
+    b = a.sum()
+    b_torch = a_torch.sum()
+
+    b.to(Device.CPU)
+
+    check_val(b, b_torch)
+
+def test_sum_reduce_axis_forward():
+    a = Tensor.normal(0, 1, (30, 30, 30))
+    a_torch = create_identical_torch_tensor(a)
+
+    a.to(Device.GPU)
+
+    b = a.sum(axis=(1, 2))
+    b_torch = a_torch.sum(axis=(1, 2))
+
+    b.to(Device.CPU)
+
+    check_val(b, b_torch)

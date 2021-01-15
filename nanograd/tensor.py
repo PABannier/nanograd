@@ -257,7 +257,7 @@ class Tensor:
         
         indices += [(0, shape[i]) for i in range(len(args), len(self.shape))]
         
-        return F.Slice.apply(self, indices)
+        return F.Slice.apply(self, indices, cl_ctx=cl_ctx, cl_queue=cl_queue)
 
     # ****************************************
     # ********** Basic operations ************
@@ -289,7 +289,7 @@ class Tensor:
     # ****************************************
     
     def sum(self, axis=None, keepdims:bool=False):
-        return F.Sum.apply(self, axis, keepdims)
+        return F.Sum.apply(self, axis, keepdims, cl_ctx=cl_ctx, cl_queue=cl_queue)
     
     def mean(self, axis=None, keepdims:bool=False):
         out = self.sum(axis=axis)

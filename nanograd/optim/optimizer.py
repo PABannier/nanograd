@@ -77,7 +77,7 @@ class Adam(Optimizer):
                 eps (float): avoid division by zero
         """
         super().__init__(params)
-        self.lr, self.beta1, self.bet2, self.eps = lr, beta1, beta2, eps
+        self.lr, self.beta1, self.beta2, self.eps = lr, beta1, beta2, eps
 
         self._init_parameters()
 

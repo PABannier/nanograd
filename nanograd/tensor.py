@@ -199,6 +199,12 @@ class Tensor:
         if self.grad:
             self.grad.to(device)
 
+    def cpu(self):
+        self.to(Device.CPU)
+    
+    def gpu(self):
+        self.to(Device.GPU)
+
     # ****************************************
     # *************** Backprop ***************
     # ****************************************
@@ -282,7 +288,7 @@ class Tensor:
         return self * (other ** (-1.0))
     
     def __matmul__(self, other):
-        return F.MatMul.apply(self, other)
+        return F.MatMul.apply(self, other, cl_ctx=cl_ctx, cl_queue=cl_queue)
     
     # ****************************************
     # ******** Advanced operations ***********
@@ -297,13 +303,16 @@ class Tensor:
         return out * Tensor(coeff)
     
     def reshape(self, shape:tuple):
-        return F.Reshape.apply(self, shape)
+        return F.Reshape.apply(self, shape, cl_ctx=cl_ctx, cl_queue=cl_queue)
     
     def T(self):
-        return F.Transpose.apply(self)
+        return F.Transpose.apply(self, cl_ctx=cl_ctx, cl_queue=cl_queue)
 
-    def max(self, axis=None):
-        return F.Max.apply(self, axis)
+    def max(self, axis=None, keepdims=False):
+        return F.Max.apply(self, axis, keepdims, cl_ctx=cl_ctx, cl_queue=cl_queue)
+    
+    def min(self, axis=None, keepdims=False):
+        return F.Min.apply(self, axis, keepdims, cl_ctx=cl_ctx, cl_queue=cl_queue)
     
     def log(self):
         return F.Log.apply(self, cl_ctx=cl_ctx, cl_queue=cl_queue)

@@ -345,6 +345,20 @@ def test_slice():
     check_val_and_grad(b, b_torch)
 
 
+def test_min():
+    a = Tensor.normal(0, 1, (30, 40, 20, 10), requires_grad=True)
+    a_torch = create_identical_torch_tensor(a)
+
+    b = a.min(axis=3).min(axis=0)
+    b_torch, _ = a_torch.min(axis=3)
+    b_torch, _ = b_torch.min(axis=0)
+
+    b_torch.sum().backward()
+    b.backward()
+
+    check_val_and_grad(a, a_torch)
+    check_val_and_grad(b, b_torch)
+
 def test_max():
     a = Tensor.normal(0, 1, (30, 40, 20, 10), requires_grad=True)
     a_torch = create_identical_torch_tensor(a)

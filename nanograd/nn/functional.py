@@ -74,7 +74,7 @@ def to_one_hot(arr, num_classes:int):
 
 class Slice(Function):
     @staticmethod
-    def forward(ctx, a, indices):
+    def forward(ctx, a, indices=None):
         if not type(a).__name__ == 'Tensor':
             raise Exception("Arg for Slice must be tensor: {}".format(type(a).__name__))
 
@@ -141,10 +141,11 @@ class Reshape(Function):
         if a.device == tensor.Device.CPU:
             out_data = ops_cpu.reshape_forward(a.data, shape)
         else:
-            out_data = ops_gpu.reshape_forward(ctx.cl_ctx, ctx.cl_queue, a.data, shape)
-
+            out_data = ops_gpu.reshape_forward(ctx.cl_ctx, ctx.cl_queue, a, shape)
+        
         out = tensor.Tensor(out_data, requires_grad=requires_grad, 
                             is_leaf=is_leaf, device=a.device)
+            
         out.children = [a]
         out.op = 'reshape'
         return out
@@ -156,7 +157,7 @@ class Reshape(Function):
 
 class Max(Function):
     @staticmethod
-    def forward(ctx, a, axis=None):
+    def forward(ctx, a, axis=None, keepdims=False):
         if not type(a).__name__ == "Tensor":
             raise Exception("Arg for Max must be tensor: {}".format(type(a).__name__))
 
@@ -168,9 +169,9 @@ class Max(Function):
         is_leaf = not requires_grad
 
         if a.device == tensor.Device.CPU:
-            out_data = ops_cpu.max_forward(a.data, axis)
+            out_data = ops_cpu.max_forward(a.data, axis, keepdims)
         else:
-            out_data = ops_gpu.max_forward(ctx.cl_ctx, ctx.cl_queue, a.data, axis)
+            out_data = ops_gpu.max_forward(ctx.cl_ctx, ctx.cl_queue, a.data, axis, keepdims)
         
         ctx.axis, ctx.out = axis, out_data
 
@@ -178,6 +179,45 @@ class Max(Function):
                             is_leaf=is_leaf, device=a.device)
         out.children = [a]
         out.op = 'max'
+
+        return out
+    
+    @staticmethod
+    def backward(ctx, grad_output):
+        axis, out = ctx.axis, ctx.out
+        inp = ctx.saved_tensors[0]
+        
+        shape = [1 if axis is None or i in axis else inp.shape[i] for i in range(len(inp.shape))]
+        ret2 = (inp.data == out.reshape(shape))
+        div = ret2.sum(axis=None if axis is None else tuple(axis), keepdims=True) 
+        out = ret2 * (grad_output.reshape(shape)).data / div
+        return tensor.Tensor(out), None
+
+
+class Min(Function):
+    @staticmethod
+    def forward(ctx, a, axis=None, keepdims=False):
+        if not type(a).__name__ == "Tensor":
+            raise Exception("Arg for Min must be tensor: {}".format(type(a).__name__))
+
+        axis = [axis] if type(axis) == int else axis
+
+        ctx.save_for_backward(a)
+
+        requires_grad = a.requires_grad
+        is_leaf = not requires_grad
+
+        if a.device == tensor.Device.CPU:
+            out_data = ops_cpu.min_forward(a.data, axis, keepdims)
+        else:
+            out_data = ops_gpu.min_forward(ctx.cl_ctx, ctx.cl_queue, a.data, axis, keepdims)
+        
+        ctx.axis, ctx.out = axis, out_data
+
+        out = tensor.Tensor(out_data, requires_grad=requires_grad, 
+                            is_leaf=is_leaf, device=a.device)
+        out.children = [a]
+        out.op = 'min'
 
         return out
     

@@ -22,8 +22,14 @@ def transpose_forward(a):
 def reshape_forward(a, shape):
     return a.reshape(shape)
 
-def max_forward(a, axis):
+def max_forward(a, axis, keepdims):
     out = np.amax(a, axis=None if axis is None else tuple(axis), keepdims=True) 
+    if axis is not None:
+        out = out.reshape([a.shape[i] for i in range(len(a.shape)) if i not in axis])
+    return out
+
+def min_forward(a, axis, keepdims):
+    out = np.amin(a, axis=None if axis is None else tuple(axis), keepdims=True)
     if axis is not None:
         out = out.reshape([a.shape[i] for i in range(len(a.shape)) if i not in axis])
     return out

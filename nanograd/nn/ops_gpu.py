@@ -11,8 +11,13 @@ class GPUBuffer:
     def __init__(self, ctx, shape, hostbuf=None):
         if isinstance(shape, int): shape = [shape]
         self.shape, self.dtype = tuple(shape), np.float32
-        self.cl = cl.Buffer(ctx, cl.mem_flags.READ_WRITE | (cl.mem_flags.COPY_HOST_PTR if hostbuf is not None else 0), 4*np.prod(shape), 
-                            hostbuf=hostbuf.astype(np.float32).ravel() if hostbuf is not None else None)
+
+        if isinstance(hostbuf, GPUBuffer):
+            self.cl = hostbuf.cl
+        else:
+            self.cl = cl.Buffer(ctx, cl.mem_flags.READ_WRITE | (cl.mem_flags.COPY_HOST_PTR if hostbuf is not None else 0), 
+                                4*np.prod(shape), hostbuf=hostbuf.astype(np.float32).ravel() if hostbuf is not None else None)
+
     def __repr__(self):
         return f'<GPUBuffer with shape {self.shape}>'
 
@@ -150,6 +155,82 @@ def reduce_op(ctx, queue, code, code2, inp, axis=None, keepdims=False, start="0.
     )
     return ret
 
+def perm_axis_op(ctx, queue, inp, order=(1,0)):
+    out_size = np.array(inp.shape)[list(order)]
+    ret = GPUBuffer(ctx, out_size)
+    prgm = cl.Program(ctx, """
+        __kernel void perm(__global const float *a_g, __global float *res_g, int n_axis,
+                            __global const int *shape, __global const int *order) {
+            int gid = get_global_id(0);
+            int gi = gid;
+            int idx = 0;
+            for(int i = n_axis-1; i>-1; i--) {
+            int stride = 1;
+            for(int j=order[i]+1; j<n_axis; j++) stride *= shape[j];
+            idx += (gi % shape[order[i]])*stride;
+            gi /= shape[order[i]];
+            }
+            res_g[gid] = a_g[idx];
+            }"""
+    ).build()
+
+    prgm.perm(queue, [np.prod(out_size)], None, inp.cl, ret.cl, np.int32(len(out_size)),
+         cl.Buffer(ctx, cl.mem_flags.READ_WRITE | cl.mem_flags.COPY_HOST_PTR, hostbuf=np.array(inp.shape, dtype=np.int32)),
+         cl.Buffer(ctx, cl.mem_flags.READ_WRITE | cl.mem_flags.COPY_HOST_PTR, hostbuf=np.array(order, dtype=np.int32)))
+    return ret
+
+def inner_slice(ctx, queue, inp, arg):
+    shift = [y[0] for y in arg]
+    out_shape = [y[1]-y[0] for y in arg]
+    ret = GPUBuffer(ctx, out_shape)
+    prgm = cl.Program(ctx, """
+        __kernel void gslice(__global const float *input, __global float *output, int prod, int n_dims,
+                       __global const int *shape_x, __global const int *shape_ret,
+                       __global const int *shift) {
+            int gid = get_global_id(0);
+            int iptr = 0;
+            int zero = 1;
+            for (int dim = 0; dim < n_dims; dim++) {
+            prod /= shape_ret[dim];
+            int sidx = (gid / prod) % shape_ret[dim] + shift[dim];
+            zero &= (sidx >= 0 && sidx < shape_x[dim]);
+            iptr = (iptr * shape_x[dim]) + sidx;
+            }
+            output[gid] = zero ? input[iptr] : 0.0;
+        }
+    """).build()
+
+    prgm.gslice(queue, [np.prod(ret.shape)], None, inp.cl, ret.cl, np.int32(np.prod(ret.shape)), np.int32(len(ret.shape)),
+                cl.Buffer(ctx, cl.mem_flags.READ_WRITE | cl.mem_flags.COPY_HOST_PTR, hostbuf=np.array(inp.shape, dtype=np.int32)),
+                cl.Buffer(ctx, cl.mem_flags.READ_WRITE | cl.mem_flags.COPY_HOST_PTR, hostbuf=np.array(ret.shape, dtype=np.int32)),
+                cl.Buffer(ctx, cl.mem_flags.READ_WRITE | cl.mem_flags.COPY_HOST_PTR, hostbuf=np.array(shift, dtype=np.int32)))
+    return ret
+
+def matmul_op(ctx, queue, a, b):
+    cnt = np.prod(a.shape[0:-2]) if len(a.shape) > 2 else 1
+    isize, msize, osize = np.int32(a.shape[-2]), np.int32(a.shape[-1]), np.int32(b.shape[-1])
+    ret = GPUBuffer(ctx, list(a.shape[0:-2])+[isize, osize])
+    prgm = cl.Program(ctx, """
+        __kernel void matmul(__global const float *input, __global const float *weight, __global float *res,
+                            int isize, int is0, int is1, int msize, int ws0, int ws1, int osize) {
+            int stride = get_global_id(2);
+            int X = get_global_id(0); // isize
+            int Y = get_global_id(1); // osize
+            float ret = 0.0;
+            for (int x = 0; x < msize; x++) {
+                ret += input[X * is0 + x * is1 + isize*msize*stride] *
+                weight[Y * ws0 + x * ws1 + msize*osize*stride];
+            }
+            res[X * osize + Y + isize*osize*stride] = ret;
+        }
+    """).build()
+
+    prgm.matmul(queue, [isize, osize, cnt], None, 
+                a.cl, b.cl, ret.cl, isize, msize, 
+                np.int32(1), msize, np.int32(1), osize, osize)
+    return ret
+
+
 # *************************************
 # *********** Forward passes **********
 # *************************************
@@ -161,7 +242,7 @@ def mul_forward(ctx, queue, a, b):
     return element_wise_binary_op(ctx, queue, 'a*b', a, b)
 
 def matmul_forward(ctx, queue, a, b):
-    raise NotImplementedError
+    return matmul_op(ctx, queue, a, b)
 
 def log_forward(ctx, queue, a):
     return unary_op(ctx, queue, 'log(a)', a)
@@ -185,16 +266,24 @@ def tanh_forward(ctx, queue, a):
     return unary_op(ctx, queue, '(exp(a) - exp(-a)) / (exp(a) + exp(-a))', a)
 
 def slice_forward(ctx, queue, a, indices):
-    raise NotImplementedError
+    return inner_slice(ctx, queue, a, indices)
 
 def transpose_forward(ctx, queue, a):
-    raise NotImplementedError
+    return perm_axis_op(ctx, queue, a, order=(1, 0))
 
 def reshape_forward(ctx, queue, a, shape):
-    raise NotImplementedError
+    new_shape = tuple([-np.prod(a.shape) // np.prod(shape) 
+                       if s == -1 else s for s in shape])
+    assert np.prod(new_shape) == np.prod(shape), "Inconsistent array reshape size"
+    return GPUBuffer(ctx, new_shape, hostbuf=a.data)
 
-def max_forward(ctx, queue, a, axis):
-    raise NotImplementedError
+def max_forward(ctx, queue, a, axis, keepdims):
+    return reduce_op(ctx, queue, 'out = max(a, out)', 'out',
+                     a, axis=axis, keepdims=keepdims, start='-INFINITY')
+
+def min_forward(ctx, queue, a, axis, keepdims):
+    return reduce_op(ctx, queue, 'out = min(a, out)', 'out',
+                     a, axis=axis, keepdims=keepdims, start='+INFINITY')
 
 def sum_forward(ctx, queue, a, axis, keepdims):
     return reduce_op(ctx, queue, 'out += a', 'out', 

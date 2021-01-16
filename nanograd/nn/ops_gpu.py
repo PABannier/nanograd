@@ -9,6 +9,7 @@ import functools
 
 class GPUBuffer:
     def __init__(self, ctx, shape, hostbuf=None):
+        if isinstance(shape, int): shape = [shape]
         self.shape, self.dtype = tuple(shape), np.float32
         self.cl = cl.Buffer(ctx, cl.mem_flags.READ_WRITE | (cl.mem_flags.COPY_HOST_PTR if hostbuf is not None else 0), 4*np.prod(shape), 
                             hostbuf=hostbuf.astype(np.float32).ravel() if hostbuf is not None else None)
@@ -124,15 +125,15 @@ def unary_op(ctx, queue, code, x):
     prgm.unop(queue, [np.prod(out.shape)], None, x.cl, out.cl)
     return out
 
-def reduce_op(ctx, queue, code, code2, inp, axis=None, start="0.0"):
+def reduce_op(ctx, queue, code, code2, inp, axis=None, keepdims=False, start="0.0"):
+    if isinstance(axis, int): axis = [axis]
     if axis is None:
-        # full reduce
         osize = [1]*len(inp.shape)
     else:
         osize = np.array(inp.shape)
         osize[list(axis)] = 1
 
-    ret = GPUBuffer(ctx, osize, hostbuf=None)
+    ret = GPUBuffer(ctx, osize if keepdims else osize[osize != 1], hostbuf=None)
 
     if axis is None: 
         ret.shape = (1,)
@@ -196,7 +197,8 @@ def max_forward(ctx, queue, a, axis):
     raise NotImplementedError
 
 def sum_forward(ctx, queue, a, axis, keepdims):
-    return reduce_op(ctx, queue, 'out += a', 'out', a, axis=axis)
+    return reduce_op(ctx, queue, 'out += a', 'out', 
+                     a, axis=axis, keepdims=keepdims)
 
 def conv1d_forward(ctx, queue, a, weight, bias, stride, pad):
     raise NotImplementedError

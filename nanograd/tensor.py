@@ -217,7 +217,9 @@ class Tensor:
                 The gradient of the loss with respect to the parameters is a multi-dimensional array filled
                 with ones.
         """
-        autograd_engine.backward(self.grad_fn, Tensor.ones(self.shape))
+        if not self.requires_grad:
+            raise Exception("Can't initiate backprop from gradient-disabled tensor")
+        autograd_engine.backward(self.grad_fn, Tensor.ones(self.shape, device=self.device))
     
     def copy(self):
         return Tensor(self.data, device=self.device)

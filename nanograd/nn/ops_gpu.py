@@ -48,6 +48,10 @@ def compute_broadcasted_dimensions(n_dims, x_shape, y_shape):
              (x_shape[i] > 1, y_shape[i] > 1))
     return dimension_list, comp_list
 
+def unbroadcast(ctx, queue, out, in_shape):
+    sum_axis = [i for i in range(len(in_shape)) if in_shape[i]==1 and out.shape[i]>1] if in_shape != (1,) else None
+    return reduce_op(ctx, queue, "out += a", "out", out, sum_axis, keepdims=True)
+
 @functools.lru_cache()
 def get_binary_op_kernel(ctx, code, complist):
     ndims = len(complist)
@@ -293,4 +297,65 @@ def conv1d_forward(ctx, queue, a, weight, bias, stride, pad):
     raise NotImplementedError
 
 def conv2d_forward(ctx, queue, a, weight, bias, stride, pad):
+    raise NotImplementedError
+
+
+# *************************************
+# ********** Backward passes **********
+# *************************************
+
+def add_backward(ctx, queue, grad_output, a_shape, b_shape):
+    return unbroadcast(ctx, queue, grad_output, a_shape), unbroadcast(ctx, queue, grad_output, b_shape) 
+
+def mul_backward(ctx, queue, grad_output, a):
+    raise NotImplementedError
+
+def matmul_backward(ctx, queue, grad_output, a):
+    raise NotImplementedError
+
+def log_backward(ctx, queue, grad_output, a):
+    return element_wise_binary_op(ctx, queue, 'a/b', grad_output, a)
+
+def exp_backward(ctx, queue, grad_output, a):
+    return element_wise_binary_op(ctx, queue, 'a * exp(b)', grad_output, a)
+
+def neg_backward(ctx, queue, grad_output):
+    return unary_op(ctx, queue, '-a', grad_output)
+
+def pow_backward(ctx, queue, grad_output, a, exp):
+    return element_wise_binary_op(ctx, queue, f'a * {exp} * pow(b, (float){exp-1})', grad_output, a)
+
+def relu_backward(ctx, queue, grad_output, a):
+    return element_wise_binary_op(ctx, queue, 'a*(b>=0)', grad_output, a)
+
+def sigmoid_backward(ctx, queue, grad_output, a):
+    return element_wise_binary_op(ctx, queue, 'a*(exp(-b) / pow((1 + exp(-b)), 2))', 
+                                  grad_output, a)
+
+def tanh_backward(ctx, queue, grad_output, a):
+    return element_wise_binary_op(ctx, queue, 'a*(1 - pow(exp(b) - exp(-b), 2) / pow(exp(b) + exp(-b), 2))', 
+                                  grad_output, a)
+
+def slice_backward(ctx, queue, grad_output, a):
+    raise NotImplementedError
+
+def transpose_backward(ctx, queue, grad_output, a):
+    raise NotImplementedError
+
+def reshape_backward(ctx, queue, grad_output, a):
+    raise NotImplementedError
+
+def max_backward(ctx, queue, grad_output, a):
+    raise NotImplementedError
+
+def min_backward(ctx, queue, grad_output, a):
+    raise NotImplementedError
+
+def sum_backward(ctx, queue, grad_output, a):
+    raise NotImplementedError
+
+def conv1d_backward(ctx, queue, a, weight, bias, stride, pad):
+    raise NotImplementedError
+
+def conv2d_backward(ctx, queue, a, weight, bias, stride, pad):
     raise NotImplementedError

@@ -7,10 +7,13 @@ import numpy as np
 
 from tests.helpers import *
 
+import os
+os.environ['PYOPENCL_COMPILER_OUTPUT'] = '1'
 
-def test_add_forward():
-    a = Tensor.normal(0, 1, (3, 3, 3))
-    b = Tensor.normal(0, 1, (3, 3, 1))
+
+def test_add():
+    a = Tensor.normal(0, 1, (3, 3, 3), requires_grad=True)
+    b = Tensor.normal(0, 1, (3, 3, 1), requires_grad=True)
 
     a_torch, b_torch = create_identical_torch_tensor(a, b)
 
@@ -20,20 +23,30 @@ def test_add_forward():
     c = a + b
     c_torch = a_torch + b_torch
 
-    c.cpu()
+    c.backward()
+    c_torch.sum().backward()
 
-    check_val(c, c_torch)
+    c.cpu(), b.cpu(), a.cpu()
 
-def test_neg_forward():
-    a = Tensor.normal(0, 1, (8, 10, 10))
+    check_val_and_grad(c, c_torch)
+    check_val_and_grad(b, b_torch)
+    check_val_and_grad(a, a_torch)
+
+def test_neg():
+    a = Tensor.normal(0, 1, (8, 10, 10), requires_grad=True)
     a_torch = create_identical_torch_tensor(a)
     a.gpu()
 
     b = -a
     b_torch = -a_torch
-    b.cpu()
 
-    check_val(b, b_torch)
+    b.backward()
+    b_torch.sum().backward()
+
+    a.cpu(), b.cpu()
+
+    check_val_and_grad(b, b_torch)
+    check_val_and_grad(a, a_torch)
 
 def test_sub_forward():
     a = Tensor.normal(0, 1, (3, 3, 3))
@@ -67,49 +80,69 @@ def test_mul_forward():
 
     check_val(c, c_torch)
 
-def test_log_forward():
-    a = Tensor.normal(30, 1, (8, 3, 10, 10))
+def test_log():
+    a = Tensor.normal(30, 1, (8, 3, 10, 10), requires_grad=True)
     a_torch = create_identical_torch_tensor(a)
     a.gpu()
 
     b = a.log()
     b_torch = a_torch.log()
-    b.cpu()
 
-    check_val(b, b_torch)
+    b.backward()
+    b_torch.sum().backward()
 
-def test_exp_forward():
-    a = Tensor.normal(4, 1, (8, 3, 10, 10))
+    b.cpu(), a.cpu()
+
+    check_val_and_grad(b, b_torch)
+    check_val_and_grad(a, a_torch)
+
+def test_exp():
+    a = Tensor.normal(4, 1, (8, 3, 10, 10), requires_grad=True)
     a_torch = create_identical_torch_tensor(a)
     a.gpu()
 
     b = a.exp()
     b_torch = a_torch.exp()
-    b.cpu()
 
-    check_val(b, b_torch)
+    b.backward()
+    b_torch.sum().backward()
 
-def test_pow_forward():
-    a = Tensor.normal(4, 1, (8, 3, 10, 10))
+    a.cpu(), b.cpu()
+
+    check_val_and_grad(b, b_torch)
+    check_val_and_grad(a, a_torch)
+
+def test_pow():
+    a = Tensor.normal(30, 1, (20, 20), requires_grad=True)
     a_torch = create_identical_torch_tensor(a)
     a.gpu()
-
-    b = a ** 3.0
-    b_torch = a_torch ** 3.0
-
-    c = a ** -1.0
-    c_torch = a_torch ** -1.0
 
     d = a ** 1.5
     d_torch = a_torch ** 1.5
 
-    b.cpu()
-    c.cpu()
-    d.cpu()
+    d.backward()
+    d_torch.sum().backward()
 
-    check_val(b, b_torch)
-    check_val(c, c_torch)
-    check_val(d, d_torch)
+    d.cpu(), a.cpu()
+
+    check_val_and_grad(a, a_torch)
+    check_val_and_grad(d, d_torch)
+
+def test_pow_neg():
+    a = Tensor.normal(30, 1, (20, 20), requires_grad=True)
+    a_torch = create_identical_torch_tensor(a)
+    a.gpu()
+
+    c = a ** -1.2
+    c_torch = a_torch ** -1.2
+    
+    c.backward()
+    c_torch.sum().backward()
+
+    a.cpu(), c.cpu()
+
+    check_val_and_grad(a, a_torch)
+    check_val_and_grad(c, c_torch)
 
 def test_div_forward():
     a = Tensor.normal(30, 2, (3, 2, 1))
@@ -127,41 +160,56 @@ def test_div_forward():
 
     check_val(c, c_torch, atol=1e-3)
 
-def test_relu_forward():
-    a = Tensor.normal(0, 2, (8, 3, 10, 10))
+def test_relu():
+    a = Tensor.normal(0, 2, (8, 3, 10, 10), requires_grad=True)
     a_torch = create_identical_torch_tensor(a)
+
     a.gpu()
 
     b = a.relu()
     b_torch = a_torch.relu()
 
-    b.cpu()
+    b.backward()
+    b_torch.sum().backward()
 
-    check_val(b, b_torch)
+    a.cpu(), b.cpu()
 
-def test_sigmoid_forward(): 
-    a = Tensor.randn(20, 20)
+    check_val_and_grad(b, b_torch)
+    check_val_and_grad(a, a_torch)
+
+def test_sigmoid(): 
+    a = Tensor.randn(20, 20, requires_grad=True)
     a_torch = create_identical_torch_tensor(a)
 
     a.gpu()
 
     b = a.sigmoid()
     b_torch = a_torch.sigmoid()
-    b.cpu()
 
-    check_val(b, b_torch)
+    b.backward()
+    b_torch.sum().backward()
 
-def test_tanh_forward():
-    a = Tensor.randn(20, 20)
+    a.cpu(), b.cpu()
+
+    check_val_and_grad(b, b_torch)
+    check_val_and_grad(a, a_torch)
+
+def test_tanh():
+    a = Tensor.randn(20, 20, requires_grad=True)
     a_torch = create_identical_torch_tensor(a)
 
     a.gpu()
 
     b = a.tanh()
     b_torch = a_torch.tanh()
-    b.cpu()
 
-    check_val(b, b_torch)
+    b.backward()
+    b_torch.sum().backward()
+
+    a.cpu(), b.cpu()
+
+    check_val_and_grad(b, b_torch)
+    check_val_and_grad(a, a_torch)
 
 def test_sum_full_reduce_forward():
     a = Tensor.normal(0, 1, (30, 30, 30))

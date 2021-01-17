@@ -7,9 +7,6 @@ import nn.ops_cpu as ops_cpu
 import nn.ops_gpu as ops_gpu
 
 
-def sigmoid(x:np.ndarray) -> np.ndarray:
-    return 1 / (1 + np.exp(-x))
-
 def inner_slice(a, indices):
     padding = [(max(0, -p[0]), max(0, p[1]-a.shape[i])) for i, p in enumerate(indices)]
     a = np.pad(a, padding, mode="constant")
@@ -256,7 +253,13 @@ class Log(Function):
     @staticmethod
     def backward(ctx, grad_output):
         a = ctx.saved_tensors[0]
-        return tensor.Tensor(grad_output.data / a.data), None
+
+        if a.device == tensor.Device.CPU:
+            grad_a = ops_cpu.log_backward(grad_output.data, a.data)
+        else:
+            grad_a = ops_gpu.log_backward(ctx.cl_ctx, ctx.cl_queue, grad_output.data, a.data)
+
+        return tensor.Tensor(grad_a), None
     
 
 class Exp(Function):
@@ -282,7 +285,12 @@ class Exp(Function):
     @staticmethod
     def backward(ctx, grad_output):
         a = ctx.saved_tensors[0]
-        grad_a = grad_output.data * np.exp(a.data)
+
+        if a.device == tensor.Device.CPU:
+            grad_a = ops_cpu.exp_backward(grad_output.data, a.data)
+        else:
+            grad_a = ops_gpu.exp_backward(ctx.cl_ctx, ctx.cl_queue, grad_output.data, a.data)
+
         return tensor.Tensor(grad_a), None
 
 
@@ -310,13 +318,13 @@ class Add(Function):
     def backward(ctx, grad_output):
         a, b = ctx.saved_tensors
 
-        grad_a = np.ones(a.shape) * grad_output.data
-        grad_b = np.ones(b.shape) * grad_output.data
+        if a.device == tensor.Device.CPU:
+            grad_a, grad_b = ops_cpu.add_backward(grad_output.data, a.shape, b.shape)
+        else:
+            grad_a, grad_b = ops_gpu.add_backward(ctx.cl_ctx, ctx.cl_queue, grad_output.data,
+                                                  a.shape, b.shape)
 
-        grad_a = tensor.Tensor(unbroadcast(grad_a, a.shape))
-        grad_b = tensor.Tensor(unbroadcast(grad_b, b.shape))
-
-        return grad_a, grad_b
+        return tensor.Tensor(grad_a), tensor.Tensor(grad_b)
 
 
 class Sum(Function):
@@ -376,7 +384,11 @@ class Neg(Function):
     
     @staticmethod
     def backward(ctx, grad_output):
-        return tensor.Tensor(-grad_output.data), None
+        if grad_output.device == tensor.Device.CPU:
+            grad = ops_cpu.neg_backward(grad_output.data)
+        else:
+            grad = ops_gpu.neg_backward(ctx.cl_ctx, ctx.cl_queue, grad_output.data)
+        return tensor.Tensor(grad), None
 
 
 class MatMul(Function):
@@ -444,7 +456,11 @@ class Pow(Function):
     def backward(ctx, grad_output):
         exp = ctx.exp
         a = ctx.saved_tensors[0]
-        grad_a = exp * (a.data ** (exp-1)) * grad_output.data
+
+        if a.device == tensor.Device.CPU:
+            grad_a = ops_cpu.pow_backward(grad_output.data, a.data, exp)
+        else:
+            grad_a = ops_gpu.pow_backward(ctx.cl_ctx, ctx.cl_queue, grad_output.data, a.data, exp)
 
         return tensor.Tensor(grad_a), None
 
@@ -507,7 +523,11 @@ class ReLU(Function):
     @staticmethod
     def backward(ctx, grad_output):
         a = ctx.saved_tensors[0]
-        grad_a = grad_output.data * (a.data >= 0)
+
+        if grad_output.device == tensor.Device.CPU:
+            grad_a = ops_cpu.relu_backward(grad_output.data, a.data)
+        else:
+            grad_a = ops_gpu.relu_backward(ctx.cl_ctx, ctx.cl_queue, grad_output.data, a.data)
 
         return tensor.Tensor(grad_a), None
 
@@ -537,7 +557,12 @@ class Sigmoid(Function):
     @staticmethod
     def backward(ctx, grad_output):
         a = ctx.saved_tensors[0]
-        grad_a = grad_output.data * sigmoid(a.data) * (1 - sigmoid(a.data))
+
+        if a.device == tensor.Device.CPU:
+            grad_a = ops_cpu.sigmoid_backward(grad_output.data, a.data)
+        else:
+            grad_a = ops_gpu.sigmoid_backward(ctx.cl_ctx, ctx.cl_queue, grad_output.data, a.data)
+
         return tensor.Tensor(grad_a), None
 
 
@@ -566,7 +591,12 @@ class Tanh(Function):
     @staticmethod
     def backward(ctx, grad_output):
         a = ctx.saved_tensors[0]
-        grad_a = grad_output.data * (1 - np.power(np.tanh(a.data), 2))
+
+        if a.device == tensor.Device.CPU:
+            grad_a = ops_cpu.tanh_backward(grad_output.data, a.data)
+        else:
+            grad_a = ops_gpu.tanh_backward(ctx.cl_ctx, ctx.cl_queue, grad_output.data, a.data)
+
         return tensor.Tensor(grad_a), None
 
 

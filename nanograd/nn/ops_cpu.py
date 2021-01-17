@@ -1,6 +1,25 @@
 import numpy as np
 
 
+# *************************************
+# ************** Helpers **************
+# *************************************
+
+def sigmoid(x:np.ndarray) -> np.ndarray:
+    return 1 / (1 + np.exp(-x))
+
+def unbroadcast(grad:np.ndarray, shape:tuple, to_keep:int=0) -> np.ndarray:
+    while len(grad.shape) != len(shape):
+        grad = grad.sum(axis=0)
+    for i in range(len(shape) - to_keep):
+        if grad.shape[i] != shape[i]:
+            grad = grad.sum(axis=i, keepdims=True)
+    return grad
+
+# *************************************
+# *********** Forward passes **********
+# *************************************
+
 def slice_forward(a, indices):
     """
         Helper function to slice a Tensor
@@ -68,3 +87,63 @@ def sigmoid_forward(a):
 
 def tanh_forward(a):
     return np.tanh(a)
+
+# *************************************
+# ********** Backward passes **********
+# *************************************
+
+def add_backward(grad_output, a_shape, b_shape):
+    grad_a = np.ones(a_shape) * grad_output.data
+    grad_b = np.ones(b_shape) * grad_output.data
+    return unbroadcast(grad_a, a_shape), unbroadcast(grad_b, b_shape)
+
+def mul_backward(grad_output, a):
+    raise NotImplementedError
+
+def matmul_backward(grad_output, a):
+    raise NotImplementedError
+
+def log_backward(grad_output, a):
+    return grad_output / a
+
+def exp_backward(grad_output, a):
+    return grad_output * np.exp(a)
+
+def neg_backward(grad_output):
+    return -grad_output
+
+def pow_backward(grad_output, a, exp):
+    return exp * (a ** (exp-1)) * grad_output
+
+def relu_backward(grad_output, a):
+    return grad_output * (a >= 0)
+
+def sigmoid_backward(grad_output, a):
+    return grad_output * sigmoid(a) * (1 - sigmoid(a))
+
+def tanh_backward(grad_output, a):
+    return grad_output * (1 - np.power(np.tanh(a), 2))
+
+def slice_backward(grad_output, a):
+    raise NotImplementedError
+
+def transpose_backward(grad_output, a):
+    raise NotImplementedError
+
+def reshape_backward(grad_output, a):
+    raise NotImplementedError
+
+def max_backward(grad_output, a):
+    raise NotImplementedError
+
+def min_backward(grad_output, a):
+    raise NotImplementedError
+
+def sum_backward(grad_output, a):
+    raise NotImplementedError
+
+def conv1d_backward(a, weight, bias, stride, pad):
+    raise NotImplementedError
+
+def conv2d_backward(a, weight, bias, stride, pad):
+    raise NotImplementedError

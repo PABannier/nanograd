@@ -26,9 +26,9 @@ def check_grad(nano_tensor, torch_tensor):
         pass
 
 
-def check_val_and_grad(nano_tensor, torch_tensor):
+def check_val_and_grad(nano_tensor, torch_tensor, atol=1e-5):
     assert type(nano_tensor).__name__ == "Tensor", f"Expected Tensor object, got {type(nano_tensor).__name__}"
-    check_val(nano_tensor, torch_tensor)
+    check_val(nano_tensor, torch_tensor, atol=atol)
     check_grad(nano_tensor, torch_tensor)
 
 

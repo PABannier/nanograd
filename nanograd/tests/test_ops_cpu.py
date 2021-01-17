@@ -23,6 +23,9 @@ def test_add():
     e.backward()
     e_torch.sum().backward()
 
+    print(c.grad)
+    print(c_torch.grad)
+
     check_val_and_grad(a, a_torch)
     check_val_and_grad(b, b_torch)
     check_val_and_grad(c, c_torch)

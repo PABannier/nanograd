@@ -401,3 +401,38 @@ def test_matmul():
     check_val_and_grad(c, c_torch)
     check_val_and_grad(b, b_torch)
     check_val_and_grad(a, a_torch)
+
+def test_multiple_op():
+    a = Tensor.normal(0, 1, (30, 30), requires_grad=True)
+    b = Tensor.normal(0, 1, (30, 15), requires_grad=True)
+    c = Tensor.normal(30, 3, (30, 15), requires_grad=True)
+
+    a_torch, b_torch, c_torch = create_identical_torch_tensor(a, b, c)
+
+    a.gpu(), b.gpu(), c.gpu()
+
+    d = (a @ b).relu()
+    d_torch = (a_torch @ b_torch).relu()
+
+    e = d + c
+    e_torch = d_torch + c_torch
+
+    f = e.log()
+    f_torch = e_torch.log()
+
+    print(f.shape)
+    g = f[:, 3:]
+    g_torch = f_torch[:, 3:]
+
+    g.backward()
+    g_torch.sum().backward()
+
+    a.cpu(), b.cpu(), c.cpu(), d.cpu(), e.cpu(), f.cpu(), g.cpu()
+
+    check_val_and_grad(a, a_torch)
+    check_val_and_grad(b, b_torch)
+    check_val_and_grad(c, c_torch)
+    check_val_and_grad(d, d_torch)
+    check_val_and_grad(e, e_torch)
+    check_val_and_grad(f, f_torch)
+    check_val_and_grad(g, g_torch)

@@ -228,7 +228,7 @@ def test_tanh():
     check_val_and_grad(a, a_torch)
 
 def test_sum_full_reduce_forward():
-    a = Tensor.normal(0, 1, (30, 30, 30))
+    a = Tensor.normal(0, 1, (30, 30, 30), requires_grad=True)
     a_torch = create_identical_torch_tensor(a)
 
     a.gpu()
@@ -236,12 +236,16 @@ def test_sum_full_reduce_forward():
     b = a.sum()
     b_torch = a_torch.sum()
 
-    b.cpu()
+    b.backward()
+    b_torch.sum().backward()
 
-    check_val(b, b_torch, atol=1e-4)
+    b.cpu(), a.cpu()
+
+    check_val_and_grad(b, b_torch, atol=1e-4)
+    check_val_and_grad(a, a_torch, atol=1e-4)
 
 def test_sum_reduce_one_axis_forward():
-    a = Tensor.normal(0, 1, (30, 30, 60))
+    a = Tensor.normal(0, 1, (30, 30, 60), requires_grad=True)
     a_torch = create_identical_torch_tensor(a)
 
     a.gpu()
@@ -249,12 +253,16 @@ def test_sum_reduce_one_axis_forward():
     b = a.sum(axis=2)
     b_torch = a_torch.sum(axis=2)
 
-    b.cpu()
+    b.backward()
+    b_torch.sum().backward()
 
-    check_val(b, b_torch, atol=1e-4)
+    b.cpu(), a.cpu()
+
+    check_val_and_grad(b, b_torch, atol=1e-4)
+    check_val_and_grad(a, a_torch, atol=1e-4)
 
 def test_sum_reduce_axis_forward():
-    a = Tensor.normal(0, 1, (30, 30, 30))
+    a = Tensor.normal(0, 1, (30, 30, 30), requires_grad=True)
     a_torch = create_identical_torch_tensor(a)
 
     a.gpu()
@@ -262,9 +270,13 @@ def test_sum_reduce_axis_forward():
     b = a.sum(axis=(1, 2))
     b_torch = a_torch.sum(axis=(1, 2))
 
-    b.cpu()
+    b.backward()
+    b_torch.sum().backward()
 
-    check_val(b, b_torch, atol=1e-4)
+    b.cpu(), a.cpu()
+
+    check_val_and_grad(b, b_torch, atol=1e-4)
+    check_val_and_grad(a, a_torch, atol=1e-4)
 
 def test_max_full_reduce_forward():
     a = Tensor.normal(0, 1, (30, 30, 30))
@@ -353,7 +365,7 @@ def test_transpose():
     check_val_and_grad(a, a_torch)
 
 def test_slice():
-    a = Tensor.normal(0, 1, (30, 40, 20, 10))
+    a = Tensor.normal(0, 1, (30, 40, 20, 10), requires_grad=True)
     a_torch = create_identical_torch_tensor(a)
 
     a.gpu()
@@ -361,11 +373,14 @@ def test_slice():
     b = a[10:20, :, :12, 5:]
     b_torch = a_torch[10:20, :, :12, 5:]
 
+    b.backward()
+    b_torch.sum().backward()
+
     a.cpu()
     b.cpu()
 
-    check_val(a, a_torch)
-    check_val(b, b_torch)
+    check_val_and_grad(a, a_torch)
+    check_val_and_grad(b, b_torch)
 
 def test_matmul():
     a = Tensor.normal(0, 1, (30, 15), requires_grad=True)

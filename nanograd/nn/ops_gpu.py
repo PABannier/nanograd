@@ -342,8 +342,9 @@ def tanh_backward(ctx, queue, grad_output, a):
     return element_wise_binary_op(ctx, queue, 'a*(1 - pow(exp(b) - exp(-b), 2) / pow(exp(b) + exp(-b), 2))', 
                                   grad_output, a)
 
-def slice_backward(ctx, queue, grad_output, a):
-    raise NotImplementedError
+def slice_backward(ctx, queue, grad_output, shape, fwd_indices):
+    indices = [(0 - p[0], grad_output.shape[i] + (shape[i] - p[1])) for i, p in enumerate(fwd_indices)]
+    return inner_slice(ctx, queue, grad_output, indices)
 
 def transpose_backward(ctx, queue, grad_output):
     return perm_axis_op(ctx, queue, grad_output)
@@ -360,8 +361,10 @@ def max_backward(ctx, queue, grad_output, a):
 def min_backward(ctx, queue, grad_output, a):
     raise NotImplementedError
 
-def sum_backward(ctx, queue, grad_output, a):
-    raise NotImplementedError
+def sum_backward(ctx, queue, grad_output, a, axis):
+    axis = [axis] if type(axis) == int else axis
+    shape = [1 if axis is None or i in axis else a.shape[i] for i in range(len(a.shape))]
+    return GPUBuffer(ctx, shape, hostbuf=grad_output)
 
 def conv1d_backward(ctx, queue, a, weight, bias, stride, pad):
     raise NotImplementedError

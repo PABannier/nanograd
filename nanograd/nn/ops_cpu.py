@@ -16,11 +16,7 @@ def unbroadcast(grad:np.ndarray, shape:tuple, to_keep:int=0) -> np.ndarray:
             grad = grad.sum(axis=i, keepdims=True)
     return grad
 
-# *************************************
-# *********** Forward passes **********
-# *************************************
-
-def slice_forward(a, indices):
+def inner_slice(a, indices):
     """
         Helper function to slice a Tensor
 
@@ -34,6 +30,13 @@ def slice_forward(a, indices):
     a = np.pad(a, padding, mode="constant")
     slices = [(p[0]+padding[i][0], p[1]+padding[i][0]) for i, p in enumerate(indices)]
     return a[tuple([slice(x[0], x[1], None) for x in slices])]
+
+# *************************************
+# *********** Forward passes **********
+# *************************************
+
+def slice_forward(a, indices):
+    return inner_slice(a, indices)
 
 def transpose_forward(a):
     return a.T
@@ -128,8 +131,9 @@ def sigmoid_backward(grad_output, a):
 def tanh_backward(grad_output, a):
     return grad_output * (1 - np.power(np.tanh(a), 2))
 
-def slice_backward(grad_output, a):
-    raise NotImplementedError
+def slice_backward(grad_output, shape, fwd_indices):
+    indices = [(0 - p[0], grad_output.shape[i] + (shape[i] - p[1])) for i, p in enumerate(fwd_indices)]
+    return inner_slice(grad_output, indices)
 
 def transpose_backward(grad_output):
     return grad_output.T
@@ -140,11 +144,13 @@ def reshape_backward(grad_output, shape):
 def max_backward(grad_output, a):
     raise NotImplementedError
 
-def min_backward(grad_output, a):
+def min_backward(grad_output, inp, out, axis):
     raise NotImplementedError
 
-def sum_backward(grad_output, a):
-    raise NotImplementedError
+def sum_backward(grad_output, a, axis):
+    axis = [axis] if type(axis) == int else axis
+    shape = [1 if axis is None or i in axis else a.shape[i] for i in range(len(a.shape))]
+    return grad_output.reshape(shape) + np.zeros_like(a) # Useful for broadcasting
 
 def conv1d_backward(a, weight, bias, stride, pad):
     raise NotImplementedError

@@ -7,21 +7,6 @@ import nn.ops_cpu as ops_cpu
 import nn.ops_gpu as ops_gpu
 
 
-def inner_slice(a, indices):
-    padding = [(max(0, -p[0]), max(0, p[1]-a.shape[i])) for i, p in enumerate(indices)]
-    a = np.pad(a, padding, mode="constant")
-    slices = [(p[0]+padding[i][0], p[1]+padding[i][0]) for i, p in enumerate(indices)]
-    return a[tuple([slice(x[0], x[1], None) for x in slices])]
-
-def unbroadcast(grad:np.ndarray, shape:tuple, to_keep:int=0) -> np.ndarray:
-    while len(grad.shape) != len(shape):
-        grad = grad.sum(axis=0)
-    for i in range(len(shape) - to_keep):
-        if grad.shape[i] != shape[i]:
-            grad = grad.sum(axis=i, keepdims=True)
-    return grad
-
-
 def cross_entropy(predicted, target):
     r"""
         Calculates Cross Entropy Loss (XELoss) between logits and true labels.
@@ -95,9 +80,13 @@ class Slice(Function):
     @staticmethod
     def backward(ctx, grad_output):
         shape, fwd_indices = ctx.shape, ctx.indices
-        indices = [(0-p[0], grad_output.shape[i]+(shape[i]-p[1])) for i, p in enumerate(fwd_indices)]
-        out = inner_slice(grad_output.data, indices)
-        return tensor.Tensor(out), None
+
+        if grad_output.device == tensor.Device.CPU:
+            grad = ops_cpu.slice_backward(grad_output.data, shape, fwd_indices)
+        else:
+            grad = ops_gpu.slice_backward(ctx.cl_ctx, ctx.cl_queue, grad_output.data, shape, fwd_indices)
+        
+        return tensor.Tensor(grad, device=grad_output.device), None
 
 
 class Transpose(Function):
@@ -234,12 +223,17 @@ class Min(Function):
     def backward(ctx, grad_output):
         axis, out = ctx.axis, ctx.out
         inp = ctx.saved_tensors[0]
-        
+        """
+        if grad_output.device == tensor.Device.CPU:
+            grad = ops_cpu.min_backward(grad_output, inp.data, out, axis)
+        else:
+            grad = ops_gpu.min_backward(ctx.cl_ctx, ctx.cl_queue, grad_output.data)
+        """
         shape = [1 if axis is None or i in axis else inp.shape[i] for i in range(len(inp.shape))]
         ret2 = (inp.data == out.reshape(shape))
         div = ret2.sum(axis=None if axis is None else tuple(axis), keepdims=True) 
         out = ret2 * (grad_output.reshape(shape)).data / div
-        return tensor.Tensor(out), None
+        return tensor.Tensor(out, device=grad_output.device), None
 
 
 class Log(Function):
@@ -266,12 +260,12 @@ class Log(Function):
     def backward(ctx, grad_output):
         a = ctx.saved_tensors[0]
 
-        if a.device == tensor.Device.CPU:
+        if grad_output.device == tensor.Device.CPU:
             grad_a = ops_cpu.log_backward(grad_output.data, a.data)
         else:
             grad_a = ops_gpu.log_backward(ctx.cl_ctx, ctx.cl_queue, grad_output.data, a.data)
 
-        return tensor.Tensor(grad_a, device=a.device), None
+        return tensor.Tensor(grad_a, device=grad_output.device), None
     
 
 class Exp(Function):
@@ -298,12 +292,12 @@ class Exp(Function):
     def backward(ctx, grad_output):
         a = ctx.saved_tensors[0]
 
-        if a.device == tensor.Device.CPU:
+        if grad_output.device == tensor.Device.CPU:
             grad_a = ops_cpu.exp_backward(grad_output.data, a.data)
         else:
             grad_a = ops_gpu.exp_backward(ctx.cl_ctx, ctx.cl_queue, grad_output.data, a.data)
 
-        return tensor.Tensor(grad_a, device=a.device), None
+        return tensor.Tensor(grad_a, device=grad_output.device), None
 
 
 class Add(Function):
@@ -330,13 +324,12 @@ class Add(Function):
     def backward(ctx, grad_output):
         a, b = ctx.saved_tensors
 
-        if a.device == tensor.Device.CPU:
+        if grad_output.device == tensor.Device.CPU:
             grad_a, grad_b = ops_cpu.add_backward(grad_output.data, a.shape, b.shape)
         else:
             grad_a, grad_b = ops_gpu.add_backward(ctx.cl_ctx, ctx.cl_queue, grad_output.data,
                                                   a.shape, b.shape)
-
-        return tensor.Tensor(grad_a, device=a.device), tensor.Tensor(grad_b, device=b.device)
+        return tensor.Tensor(grad_a, device=grad_output.device), tensor.Tensor(grad_b, device=grad_output.device)
 
 
 class Sum(Function):
@@ -367,12 +360,12 @@ class Sum(Function):
         axis = ctx.axis
         a = ctx.saved_tensors[0]
 
-        axis = [axis] if type(axis) == int else axis
-        shape = [1 if axis is None or i in axis else a.shape[i] for i in range(len(a.shape))]
+        if grad_output.device == tensor.Device.CPU:
+            grad = ops_cpu.sum_backward(grad_output.data, a.data, axis)
+        else:
+            grad = ops_gpu.sum_backward(ctx.cl_ctx, ctx.cl_queue, grad_output.data, a.data, axis)
         
-        grad_a = grad_output.data.reshape(shape) + np.zeros_like(a.data)
-        
-        return tensor.Tensor(grad_a), None, None
+        return tensor.Tensor(grad, device=grad_output.device), None, None
 
 
 class Neg(Function):
@@ -431,13 +424,12 @@ class MatMul(Function):
     def backward(ctx, grad_output):
         a, b = ctx.saved_tensors
 
-        if a.device == tensor.Device.CPU:
+        if grad_output.device == tensor.Device.CPU:
             grad_a, grad_b = ops_cpu.matmul_backward(grad_output.data, a.data, b.data)
         else:
             grad_a, grad_b = ops_gpu.matmul_backward(ctx.cl_ctx, ctx.cl_queue, 
                                                      grad_output.data, a.data, b.data)
-
-        return tensor.Tensor(grad_a, device=a.device), tensor.Tensor(grad_b, device=b.device)
+        return tensor.Tensor(grad_a, device=grad_output.device), tensor.Tensor(grad_b, device=grad_output.device)
 
 
 class Pow(Function):
@@ -469,12 +461,12 @@ class Pow(Function):
         exp = ctx.exp
         a = ctx.saved_tensors[0]
 
-        if a.device == tensor.Device.CPU:
+        if grad_output.device == tensor.Device.CPU:
             grad_a = ops_cpu.pow_backward(grad_output.data, a.data, exp)
         else:
             grad_a = ops_gpu.pow_backward(ctx.cl_ctx, ctx.cl_queue, grad_output.data, a.data, exp)
 
-        return tensor.Tensor(grad_a, device=a.device), None
+        return tensor.Tensor(grad_a, device=grad_output.device), None
 
 
 class Mul(Function):
@@ -501,12 +493,12 @@ class Mul(Function):
     def backward(ctx, grad_output):
         a, b = ctx.saved_tensors
 
-        if a.device == tensor.Device.CPU:
+        if grad_output.device == tensor.Device.CPU:
             grad_a, grad_b = ops_cpu.mul_backward(grad_output.data, a.data, b.data)
         else:
             grad_a, grad_b = ops_gpu.mul_backward(ctx.cl_ctx, ctx.cl_queue, grad_output.data, a.data, b.data)
         
-        return tensor.Tensor(grad_a, device=a.device), tensor.Tensor(grad_b, device=b.device)
+        return tensor.Tensor(grad_a, device=grad_output.device), tensor.Tensor(grad_b, device=grad_output.device)
 
 
 class ReLU(Function):
@@ -540,7 +532,7 @@ class ReLU(Function):
         else:
             grad_a = ops_gpu.relu_backward(ctx.cl_ctx, ctx.cl_queue, grad_output.data, a.data)
 
-        return tensor.Tensor(grad_a, device=a.device), None
+        return tensor.Tensor(grad_a, device=grad_output.device), None
 
 
 class Sigmoid(Function):
@@ -569,12 +561,12 @@ class Sigmoid(Function):
     def backward(ctx, grad_output):
         a = ctx.saved_tensors[0]
 
-        if a.device == tensor.Device.CPU:
+        if grad_output.device == tensor.Device.CPU:
             grad_a = ops_cpu.sigmoid_backward(grad_output.data, a.data)
         else:
             grad_a = ops_gpu.sigmoid_backward(ctx.cl_ctx, ctx.cl_queue, grad_output.data, a.data)
 
-        return tensor.Tensor(grad_a, device=a.device), None
+        return tensor.Tensor(grad_a, device=grad_output.device), None
 
 
 class Tanh(Function):
@@ -603,12 +595,12 @@ class Tanh(Function):
     def backward(ctx, grad_output):
         a = ctx.saved_tensors[0]
 
-        if a.device == tensor.Device.CPU:
+        if grad_output.device == tensor.Device.CPU:
             grad_a = ops_cpu.tanh_backward(grad_output.data, a.data)
         else:
             grad_a = ops_gpu.tanh_backward(ctx.cl_ctx, ctx.cl_queue, grad_output.data, a.data)
 
-        return tensor.Tensor(grad_a, device=a.device), None
+        return tensor.Tensor(grad_a, device=grad_output.device), None
 
 
 class Conv1d(Function):

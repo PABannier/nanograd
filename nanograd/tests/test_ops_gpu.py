@@ -318,8 +318,8 @@ def test_min_reduce_one_axis_forward():
 
     check_val(b, b_torch)
 
-def test_reshape_forward():
-    a = Tensor.normal(0, 1, (30, 30, 30))
+def test_reshape():
+    a = Tensor.normal(0, 1, (30, 30, 30), requires_grad=True)
     a_torch = create_identical_torch_tensor(a)
 
     a.gpu()
@@ -327,12 +327,16 @@ def test_reshape_forward():
     b = a.reshape((30, 900))
     b_torch = a_torch.reshape((30, 900))
 
-    b.cpu()
+    b.backward()
+    b_torch.sum().backward()
 
-    check_val(b, b_torch)
+    b.cpu(), a.cpu()
 
-def test_transpose_forward():
-    a = Tensor.normal(0, 1, (10, 5))
+    check_val_and_grad(b, b_torch)
+    check_val_and_grad(a, a_torch)
+
+def test_transpose():
+    a = Tensor.normal(0, 1, (10, 5), requires_grad=True)
     a_torch = create_identical_torch_tensor(a)
 
     a.gpu()
@@ -340,9 +344,13 @@ def test_transpose_forward():
     b = a.T()
     b_torch = a_torch.T
 
-    b.cpu()
+    b.backward()
+    b_torch.sum().backward()
 
-    check_val(b, b_torch)
+    a.cpu(), b.cpu()
+
+    check_val_and_grad(b, b_torch)
+    check_val_and_grad(a, a_torch)
 
 def test_slice():
     a = Tensor.normal(0, 1, (30, 40, 20, 10))
@@ -360,8 +368,8 @@ def test_slice():
     check_val(b, b_torch)
 
 def test_matmul():
-    a = Tensor.normal(0, 1, (30, 15))
-    b = Tensor.normal(0, 1, (15, 30))
+    a = Tensor.normal(0, 1, (30, 15), requires_grad=True)
+    b = Tensor.normal(0, 1, (15, 30), requires_grad=True)
 
     a_torch, b_torch = create_identical_torch_tensor(a, b)
 
@@ -370,6 +378,11 @@ def test_matmul():
     c = a @ b
     c_torch = a_torch @ b_torch
 
-    c.cpu()
+    c.backward()
+    c_torch.sum().backward()
 
-    check_val(c, c_torch)
+    c.cpu(), b.cpu(), a.cpu()
+
+    check_val_and_grad(c, c_torch)
+    check_val_and_grad(b, b_torch)
+    check_val_and_grad(a, a_torch)

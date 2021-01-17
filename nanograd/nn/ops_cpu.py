@@ -102,8 +102,10 @@ def mul_backward(grad_output, a, b):
     grad_b = grad_output * a
     return unbroadcast(grad_a, a.shape), unbroadcast(grad_b, b.shape)
 
-def matmul_backward(grad_output, a):
-    raise NotImplementedError
+def matmul_backward(grad_output, a, b):
+    grad_a = np.matmul(grad_output, b.T)
+    grad_b = np.matmul(a.T, grad_output)
+    return grad_a, grad_b
 
 def log_backward(grad_output, a):
     return grad_output / a
@@ -129,11 +131,11 @@ def tanh_backward(grad_output, a):
 def slice_backward(grad_output, a):
     raise NotImplementedError
 
-def transpose_backward(grad_output, a):
-    raise NotImplementedError
+def transpose_backward(grad_output):
+    return grad_output.T
 
-def reshape_backward(grad_output, a):
-    raise NotImplementedError
+def reshape_backward(grad_output, shape):
+    return grad_output.reshape(shape)
 
 def max_backward(grad_output, a):
     raise NotImplementedError

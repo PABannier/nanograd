@@ -122,7 +122,13 @@ class Transpose(Function):
 
     @staticmethod
     def backward(ctx, grad_output):
-        return tensor.Tensor(grad_output.data.T), None
+
+        if grad_output.device == tensor.Device.CPU:
+            grad = ops_cpu.transpose_backward(grad_output.data)
+        else:
+            grad = ops_gpu.transpose_backward(ctx.cl_ctx, ctx.cl_queue, grad_output.data)
+
+        return tensor.Tensor(grad, device=grad_output.device), None
 
 
 class Reshape(Function):
@@ -149,7 +155,13 @@ class Reshape(Function):
 
     @staticmethod
     def backward(ctx, grad_output):
-        return tensor.Tensor(grad_output.data.reshape(ctx.shape)), None
+        if grad_output.device == tensor.Device.CPU:
+            grad = ops_cpu.reshape_backward(grad_output.data, ctx.shape)
+        else:
+            grad = ops_gpu.reshape_backward(ctx.cl_ctx, ctx.cl_queue, 
+                                            grad_output.data, ctx.shape)
+
+        return tensor.Tensor(grad, device=grad_output.device), None
 
 
 class Max(Function):
@@ -419,13 +431,13 @@ class MatMul(Function):
     def backward(ctx, grad_output):
         a, b = ctx.saved_tensors
 
-        grad_a = np.matmul(grad_output.data, np.transpose(b.data))
-        grad_b = np.matmul(np.transpose(a.data), grad_output.data)
+        if a.device == tensor.Device.CPU:
+            grad_a, grad_b = ops_cpu.matmul_backward(grad_output.data, a.data, b.data)
+        else:
+            grad_a, grad_b = ops_gpu.matmul_backward(ctx.cl_ctx, ctx.cl_queue, 
+                                                     grad_output.data, a.data, b.data)
 
-        grad_a = tensor.Tensor(grad_a)
-        grad_b = tensor.Tensor(grad_b)
-
-        return grad_a, grad_b
+        return tensor.Tensor(grad_a, device=a.device), tensor.Tensor(grad_b, device=b.device)
 
 
 class Pow(Function):

@@ -312,8 +312,12 @@ def mul_backward(ctx, queue, grad_output, a, b):
     grad_b = element_wise_binary_op(ctx, queue, 'a*b', grad_output, a)
     return unbroadcast(ctx, queue, grad_a, a.shape), unbroadcast(ctx, queue, grad_b, b.shape)
 
-def matmul_backward(ctx, queue, grad_output, a):
-    raise NotImplementedError
+def matmul_backward(ctx, queue, grad_output, a, b):
+    aT = perm_axis_op(ctx, queue, a)
+    bT = perm_axis_op(ctx, queue, b)
+    grad_a = matmul_op(ctx, queue, grad_output, bT)
+    grad_b = matmul_op(ctx, queue, aT, grad_output)
+    return grad_a, grad_b
 
 def log_backward(ctx, queue, grad_output, a):
     return element_wise_binary_op(ctx, queue, 'a/b', grad_output, a)
@@ -341,11 +345,14 @@ def tanh_backward(ctx, queue, grad_output, a):
 def slice_backward(ctx, queue, grad_output, a):
     raise NotImplementedError
 
-def transpose_backward(ctx, queue, grad_output, a):
-    raise NotImplementedError
+def transpose_backward(ctx, queue, grad_output):
+    return perm_axis_op(ctx, queue, grad_output)
 
-def reshape_backward(ctx, queue, grad_output, a):
-    raise NotImplementedError
+def reshape_backward(ctx, queue, grad_output, shape):
+    new_shape = tuple([-np.prod(grad_output.shape) // np.prod(shape) 
+                       if s == -1 else s for s in shape])
+    assert np.prod(new_shape) == np.prod(shape), "Inconsistent array reshape size"
+    return GPUBuffer(ctx, new_shape, hostbuf=grad_output)
 
 def max_backward(ctx, queue, grad_output, a):
     raise NotImplementedError

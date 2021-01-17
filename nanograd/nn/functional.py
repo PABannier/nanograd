@@ -259,7 +259,7 @@ class Log(Function):
         else:
             grad_a = ops_gpu.log_backward(ctx.cl_ctx, ctx.cl_queue, grad_output.data, a.data)
 
-        return tensor.Tensor(grad_a), None
+        return tensor.Tensor(grad_a, device=a.device), None
     
 
 class Exp(Function):
@@ -291,7 +291,7 @@ class Exp(Function):
         else:
             grad_a = ops_gpu.exp_backward(ctx.cl_ctx, ctx.cl_queue, grad_output.data, a.data)
 
-        return tensor.Tensor(grad_a), None
+        return tensor.Tensor(grad_a, device=a.device), None
 
 
 class Add(Function):
@@ -324,7 +324,7 @@ class Add(Function):
             grad_a, grad_b = ops_gpu.add_backward(ctx.cl_ctx, ctx.cl_queue, grad_output.data,
                                                   a.shape, b.shape)
 
-        return tensor.Tensor(grad_a), tensor.Tensor(grad_b)
+        return tensor.Tensor(grad_a, device=a.device), tensor.Tensor(grad_b, device=b.device)
 
 
 class Sum(Function):
@@ -388,7 +388,7 @@ class Neg(Function):
             grad = ops_cpu.neg_backward(grad_output.data)
         else:
             grad = ops_gpu.neg_backward(ctx.cl_ctx, ctx.cl_queue, grad_output.data)
-        return tensor.Tensor(grad), None
+        return tensor.Tensor(grad, device=grad_output.device), None
 
 
 class MatMul(Function):
@@ -462,7 +462,7 @@ class Pow(Function):
         else:
             grad_a = ops_gpu.pow_backward(ctx.cl_ctx, ctx.cl_queue, grad_output.data, a.data, exp)
 
-        return tensor.Tensor(grad_a), None
+        return tensor.Tensor(grad_a, device=a.device), None
 
 
 class Mul(Function):
@@ -489,13 +489,12 @@ class Mul(Function):
     def backward(ctx, grad_output):
         a, b = ctx.saved_tensors
 
-        grad_a = grad_output.data * b.data
-        grad_b = grad_output.data * a.data
-
-        grad_a = tensor.Tensor(unbroadcast(grad_a, a.shape))
-        grad_b = tensor.Tensor(unbroadcast(grad_b, b.shape))
-
-        return grad_a, grad_b
+        if a.device == tensor.Device.CPU:
+            grad_a, grad_b = ops_cpu.mul_backward(grad_output.data, a.data, b.data)
+        else:
+            grad_a, grad_b = ops_gpu.mul_backward(ctx.cl_ctx, ctx.cl_queue, grad_output.data, a.data, b.data)
+        
+        return tensor.Tensor(grad_a, device=a.device), tensor.Tensor(grad_b, device=b.device)
 
 
 class ReLU(Function):
@@ -529,7 +528,7 @@ class ReLU(Function):
         else:
             grad_a = ops_gpu.relu_backward(ctx.cl_ctx, ctx.cl_queue, grad_output.data, a.data)
 
-        return tensor.Tensor(grad_a), None
+        return tensor.Tensor(grad_a, device=a.device), None
 
 
 class Sigmoid(Function):
@@ -563,7 +562,7 @@ class Sigmoid(Function):
         else:
             grad_a = ops_gpu.sigmoid_backward(ctx.cl_ctx, ctx.cl_queue, grad_output.data, a.data)
 
-        return tensor.Tensor(grad_a), None
+        return tensor.Tensor(grad_a, device=a.device), None
 
 
 class Tanh(Function):
@@ -597,7 +596,7 @@ class Tanh(Function):
         else:
             grad_a = ops_gpu.tanh_backward(ctx.cl_ctx, ctx.cl_queue, grad_output.data, a.data)
 
-        return tensor.Tensor(grad_a), None
+        return tensor.Tensor(grad_a, device=a.device), None
 
 
 class Conv1d(Function):

@@ -97,8 +97,10 @@ def add_backward(grad_output, a_shape, b_shape):
     grad_b = np.ones(b_shape) * grad_output.data
     return unbroadcast(grad_a, a_shape), unbroadcast(grad_b, b_shape)
 
-def mul_backward(grad_output, a):
-    raise NotImplementedError
+def mul_backward(grad_output, a, b):
+    grad_a = grad_output * b
+    grad_b = grad_output * a
+    return unbroadcast(grad_a, a.shape), unbroadcast(grad_b, b.shape)
 
 def matmul_backward(grad_output, a):
     raise NotImplementedError

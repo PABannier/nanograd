@@ -307,8 +307,10 @@ def conv2d_forward(ctx, queue, a, weight, bias, stride, pad):
 def add_backward(ctx, queue, grad_output, a_shape, b_shape):
     return unbroadcast(ctx, queue, grad_output, a_shape), unbroadcast(ctx, queue, grad_output, b_shape) 
 
-def mul_backward(ctx, queue, grad_output, a):
-    raise NotImplementedError
+def mul_backward(ctx, queue, grad_output, a, b):
+    grad_a = element_wise_binary_op(ctx, queue, 'a*b', grad_output, b)
+    grad_b = element_wise_binary_op(ctx, queue, 'a*b', grad_output, a)
+    return unbroadcast(ctx, queue, grad_a, a.shape), unbroadcast(ctx, queue, grad_b, b.shape)
 
 def matmul_backward(ctx, queue, grad_output, a):
     raise NotImplementedError

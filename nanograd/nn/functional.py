@@ -49,10 +49,14 @@ def to_one_hot(arr, num_classes:int):
         Returns:
             Tensor: one-hot tensor
     """
-    arr = arr.data.astype(int)
-    a = np.zeros((arr.shape[0], num_classes))
-    a[np.arange(len(a)), arr] = 1
-    return tensor.Tensor(a, requires_grad=True)
+    if arr.device == Device.CPU:
+        idx = arr.data.astype(int)
+        out = np.zeros((idx.shape[0], num_classes))
+        out[np.arange(len(out)), idx] = 1
+    else:
+        out = ops_gpu.one_hot_encoding_op(arr.data, num_classes)
+    
+    return tensor.Tensor(out, device=arr.device, requires_grad=True)
 
 
 class Slice(Function):

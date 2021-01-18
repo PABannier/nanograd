@@ -9,6 +9,7 @@ import nanograd.nn.module as nnn
 from nanograd.optim.optimizer import SGD
 
 from nanograd.nn.module import CrossEntropyLoss
+from device import Device
 
 
 def check_val(nano_tensor, torch_tensor, atol=1e-5):
@@ -164,7 +165,7 @@ def generate_dataset_for_mytorch_model(model, batch_size):
 
 
 def forward_(mytorch_model, mytorch_criterion, pytorch_model,
-             pytorch_criterion, x, y):
+             pytorch_criterion, x, y, test_on_gpu=False):
     """
     Calls forward on both mytorch and pytorch models.
 
@@ -180,10 +181,18 @@ def forward_(mytorch_model, mytorch_criterion, pytorch_model,
     if not pytorch_criterion is None:
         pytorch_y = pytorch_criterion(pytorch_y, torch.LongTensor(y))
 
-    mytorch_x = Tensor(x, requires_grad=True)
+    mytorch_x = Tensor(x, requires_grad=True, device=Device.GPU if test_on_gpu else Device.CPU)
+
+    if test_on_gpu:
+        mytorch_model.gpu()
+
     mytorch_y = mytorch_model(mytorch_x)
     if not mytorch_criterion is None:
         mytorch_y = mytorch_criterion(mytorch_y, Tensor(y))
+
+    if test_on_gpu:
+        mytorch_y.cpu()
+        mytorch_model.cpu()
 
     # forward check
     assert assertions_all(mytorch_y.data, pytorch_y.detach().numpy(), 'y'), "Forward Failed"
@@ -353,7 +362,7 @@ def check_model_param_settings(model):
     return True
 
 
-def forward_test(model, criterion=None, batch_size=(2,5)):
+def forward_test(model, criterion=None, batch_size=(2,5), test_on_gpu=False):
     """
         Tests forward, printing whether a mismatch occurs in forward.
     """
@@ -363,7 +372,7 @@ def forward_test(model, criterion=None, batch_size=(2,5)):
     x, y = generate_dataset_for_mytorch_model(model, batch_size)
     pytorch_criterion = get_same_pytorch_criterion(criterion)
 
-    forward_(model, criterion, pytorch_model, pytorch_criterion, x, y)
+    forward_(model, criterion, pytorch_model, pytorch_criterion, x, y, test_on_gpu=test_on_gpu)
 
 
 def forward_backward_test(model, criterion=None, batch_size=(2,5)):

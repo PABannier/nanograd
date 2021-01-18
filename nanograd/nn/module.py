@@ -107,12 +107,12 @@ class Module:
     def gpu(self):
         r"""Moving all parameter tensors onto the GPU"""
         for param in self._parameters.items():
-            param.gpu()
+            param[1].gpu()
         
     def cpu(self):
         r"""Moving all parameter tensors onto the GPU"""
         for param in self._parameters.items():
-            param.cpu()
+            param[1].cpu()
 
 
 class Sequential(Module):
@@ -165,7 +165,14 @@ class Sequential(Module):
         for layer in self.layers: 
             x = layer(x)
         return x
-
+    
+    def gpu(self):
+        for layer in self.layers:
+            layer.gpu()
+    
+    def cpu(self):
+        for layer in self.layers:
+            layer.cpu()
 
 class Linear(Module):
     r"""
@@ -226,8 +233,8 @@ class BatchNorm1d(Module):
         super().__init__()
         self.num_features = num_features
 
-        self.eps = Tensor(eps, is_parameter=True)
-        self.momentum = Tensor(momentum, is_parameter=True)
+        self.eps = Tensor(eps, is_parameter=False)
+        self.momentum = Tensor(momentum, is_parameter=False)
 
         # To make the final output affine
         self.gamma = Tensor(np.ones((self.num_features,)), 
@@ -237,9 +244,9 @@ class BatchNorm1d(Module):
 
         # Running mean and var
         self.running_mean = Tensor(np.zeros(self.num_features,), 
-                                   requires_grad=False, is_parameter=True, name="bn_running_mean")
+                                   requires_grad=False, is_parameter=False, name="bn_running_mean")
         self.running_var = Tensor(np.ones(self.num_features,), 
-                                  requires_grad=False, is_parameter=True, name="bn_running_var")
+                                  requires_grad=False, is_parameter=False, name="bn_running_var")
 
     def forward(self, x:Tensor) -> Tensor:
         r"""
@@ -284,8 +291,8 @@ class BatchNorm2d(Module):
         super().__init__()
         self.size = size
 
-        self.eps = Tensor(eps, is_parameter=True)
-        self.momentum = Tensor(momentum, is_parameter=True)
+        self.eps = Tensor(eps, is_parameter=False)
+        self.momentum = Tensor(momentum, is_parameter=False)
 
         # To make the final output affine
         self.gamma = Tensor.ones(self.size, requires_grad=True, 
@@ -295,9 +302,9 @@ class BatchNorm2d(Module):
 
         # Running mean and var
         self.running_mean = Tensor.zeros(self.size, requires_grad=False, 
-                                         is_parameter=True, name="bn_running_mean")
+                                         is_parameter=False, name="bn_running_mean")
         self.running_var = Tensor.ones(self.size, requires_grad=False, 
-                                       is_parameter=True, name="bn_running_var")
+                                       is_parameter=False, name="bn_running_var")
 
     def forward(self, x:Tensor) -> Tensor:
         r"""

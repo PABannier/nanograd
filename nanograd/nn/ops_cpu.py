@@ -141,11 +141,17 @@ def transpose_backward(grad_output):
 def reshape_backward(grad_output, shape):
     return grad_output.reshape(shape)
 
-def max_backward(grad_output, a):
-    raise NotImplementedError
+def max_backward(grad_output, inp, out, axis):
+    shape = [1 if axis is None or i in axis else inp.shape[i] for i in range(len(inp.shape))]
+    ret2 = (inp == out.reshape(shape))
+    div = ret2.sum(axis=None if axis is None else tuple(axis), keepdims=True) 
+    return ret2 * (grad_output.reshape(shape)).data / div
 
 def min_backward(grad_output, inp, out, axis):
-    raise NotImplementedError
+    shape = [1 if axis is None or i in axis else inp.shape[i] for i in range(len(inp.shape))]
+    ret2 = (inp == out.reshape(shape))
+    div = ret2.sum(axis=None if axis is None else tuple(axis), keepdims=True) 
+    return ret2 * (grad_output.reshape(shape)).data / div
 
 def sum_backward(grad_output, a, axis):
     axis = [axis] if type(axis) == int else axis

@@ -1,12 +1,13 @@
-from enum import Enum
 from typing import Union
 import warnings
 
 import numpy as np
+from viz.comp_graph import ForwardGraphVisualizer, BackwardGraphVisualizer
+
+from device import Device
 import autograd_engine
 from nn import functional as F
 from nn.ops_gpu import GPUBuffer
-from viz.comp_graph import ForwardGraphVisualizer, BackwardGraphVisualizer
 
 
 try:
@@ -29,16 +30,6 @@ def get_gpu_context_and_queue():
         devices = cl.get_platforms()[0].get_devices(device_type=cl.device_type.CPU)
     cl_ctx = cl.Context(devices=devices)
     cl_queue = cl.CommandQueue(cl_ctx)
-
-
-class Device(Enum):
-    r"""
-        Enumeration of the devices supported by
-        Nanograd. 
-        Currently, Nanograd only supports CPU and GPU.
-    """
-    CPU = 1
-    GPU = 2
 
 
 class Tensor:
@@ -203,7 +194,11 @@ class Tensor:
         self.to(Device.CPU)
     
     def gpu(self):
+        if not PYOPENCL_AVAILABLE:
+            raise Exception("OpenCL is not installed in this environment. Please consider running \
+                             pip install pyopencl to benefit from GPU-accelerated computations.")
         self.to(Device.GPU)
+        
 
     # ****************************************
     # *************** Backprop ***************

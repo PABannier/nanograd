@@ -5,6 +5,7 @@ from nn.conv_ops import (get_conv1d_output_size, get_conv2d_output_size,
                          get_im2col_indices, col2im)
 import nn.ops_cpu as ops_cpu
 import nn.ops_gpu as ops_gpu
+from device import Device
 
 
 def cross_entropy(predicted, target):
@@ -65,11 +66,13 @@ class Slice(Function):
         requires_grad = a.requires_grad
         is_leaf = not a.requires_grad
 
-        if a.device == tensor.Device.CPU:
+        print(a.device)
+
+        if a.device == Device.CPU:
             out_data = ops_cpu.slice_forward(a.data, indices)
         else:
             out_data = ops_gpu.slice_forward(ctx.cl_ctx, ctx.cl_queue, a.data, indices)
-
+        
         out = tensor.Tensor(out_data, requires_grad=requires_grad, 
                             is_leaf=is_leaf, device=a.device)
         out.children = [a]
@@ -81,7 +84,7 @@ class Slice(Function):
     def backward(ctx, grad_output):
         shape, fwd_indices = ctx.shape, ctx.indices
 
-        if grad_output.device == tensor.Device.CPU:
+        if grad_output.device == Device.CPU:
             grad = ops_cpu.slice_backward(grad_output.data, shape, fwd_indices)
         else:
             grad = ops_gpu.slice_backward(ctx.cl_ctx, ctx.cl_queue, grad_output.data, shape, fwd_indices)
@@ -98,7 +101,7 @@ class Transpose(Function):
         requires_grad = a.requires_grad
         is_leaf = not requires_grad
 
-        if a.device == tensor.Device.CPU:
+        if a.device == Device.CPU:
             out_data = ops_cpu.transpose_forward(a.data)
         else:
             out_data = ops_gpu.transpose_forward(ctx.cl_ctx, ctx.cl_queue, a.data)
@@ -112,7 +115,7 @@ class Transpose(Function):
     @staticmethod
     def backward(ctx, grad_output):
 
-        if grad_output.device == tensor.Device.CPU:
+        if grad_output.device == Device.CPU:
             grad = ops_cpu.transpose_backward(grad_output.data)
         else:
             grad = ops_gpu.transpose_backward(ctx.cl_ctx, ctx.cl_queue, grad_output.data)
@@ -130,7 +133,7 @@ class Reshape(Function):
         requires_grad = a.requires_grad
         is_leaf = not requires_grad
 
-        if a.device == tensor.Device.CPU:
+        if a.device == Device.CPU:
             out_data = ops_cpu.reshape_forward(a.data, shape)
         else:
             out_data = ops_gpu.reshape_forward(ctx.cl_ctx, ctx.cl_queue, a, shape)
@@ -144,7 +147,7 @@ class Reshape(Function):
 
     @staticmethod
     def backward(ctx, grad_output):
-        if grad_output.device == tensor.Device.CPU:
+        if grad_output.device == Device.CPU:
             grad = ops_cpu.reshape_backward(grad_output.data, ctx.shape)
         else:
             grad = ops_gpu.reshape_backward(ctx.cl_ctx, ctx.cl_queue, 
@@ -166,7 +169,7 @@ class Max(Function):
         requires_grad = a.requires_grad
         is_leaf = not requires_grad
 
-        if a.device == tensor.Device.CPU:
+        if a.device == Device.CPU:
             out_data = ops_cpu.max_forward(a.data, axis, keepdims)
         else:
             out_data = ops_gpu.max_forward(ctx.cl_ctx, ctx.cl_queue, a.data, axis, keepdims)
@@ -184,12 +187,14 @@ class Max(Function):
     def backward(ctx, grad_output):
         axis, out = ctx.axis, ctx.out
         inp = ctx.saved_tensors[0]
-        
-        shape = [1 if axis is None or i in axis else inp.shape[i] for i in range(len(inp.shape))]
-        ret2 = (inp.data == out.reshape(shape))
-        div = ret2.sum(axis=None if axis is None else tuple(axis), keepdims=True) 
-        out = ret2 * (grad_output.reshape(shape)).data / div
-        return tensor.Tensor(out), None
+
+        if grad_output.device == Device.CPU:
+            grad = ops_cpu.max_backward(grad_output, inp.data, out, axis)
+        else:
+            grad = ops_gpu.max_backward(ctx.cl_ctx, ctx.cl_queue, grad_output.data, 
+                                        inp.data, out, axis)
+            
+        return tensor.Tensor(grad, device=grad_output.device), None
 
 
 class Min(Function):
@@ -205,7 +210,7 @@ class Min(Function):
         requires_grad = a.requires_grad
         is_leaf = not requires_grad
 
-        if a.device == tensor.Device.CPU:
+        if a.device == Device.CPU:
             out_data = ops_cpu.min_forward(a.data, axis, keepdims)
         else:
             out_data = ops_gpu.min_forward(ctx.cl_ctx, ctx.cl_queue, a.data, axis, keepdims)
@@ -223,17 +228,14 @@ class Min(Function):
     def backward(ctx, grad_output):
         axis, out = ctx.axis, ctx.out
         inp = ctx.saved_tensors[0]
-        """
-        if grad_output.device == tensor.Device.CPU:
+
+        if grad_output.device == Device.CPU:
             grad = ops_cpu.min_backward(grad_output, inp.data, out, axis)
         else:
-            grad = ops_gpu.min_backward(ctx.cl_ctx, ctx.cl_queue, grad_output.data)
-        """
-        shape = [1 if axis is None or i in axis else inp.shape[i] for i in range(len(inp.shape))]
-        ret2 = (inp.data == out.reshape(shape))
-        div = ret2.sum(axis=None if axis is None else tuple(axis), keepdims=True) 
-        out = ret2 * (grad_output.reshape(shape)).data / div
-        return tensor.Tensor(out, device=grad_output.device), None
+            grad = ops_gpu.min_backward(ctx.cl_ctx, ctx.cl_queue, grad_output.data, 
+                                        inp.data, out, axis)
+
+        return tensor.Tensor(grad, device=grad_output.device), None
 
 
 class Log(Function):
@@ -245,7 +247,7 @@ class Log(Function):
         ctx.save_for_backward(a)
         requires_grad = a.requires_grad
 
-        if a.device == tensor.Device.CPU:
+        if a.device == Device.CPU:
             out_data = ops_cpu.log_forward(a.data)
         else:
             out_data = ops_gpu.log_forward(ctx.cl_ctx, ctx.cl_queue, a.data)
@@ -260,7 +262,7 @@ class Log(Function):
     def backward(ctx, grad_output):
         a = ctx.saved_tensors[0]
 
-        if grad_output.device == tensor.Device.CPU:
+        if grad_output.device == Device.CPU:
             grad_a = ops_cpu.log_backward(grad_output.data, a.data)
         else:
             grad_a = ops_gpu.log_backward(ctx.cl_ctx, ctx.cl_queue, grad_output.data, a.data)
@@ -277,7 +279,7 @@ class Exp(Function):
         ctx.save_for_backward(a)
         requires_grad = a.requires_grad
 
-        if a.device == tensor.Device.CPU:
+        if a.device == Device.CPU:
             out_data = ops_cpu.exp_forward(a.data)
         else:
             out_data = ops_gpu.exp_forward(ctx.cl_ctx, ctx.cl_queue, a.data)
@@ -292,7 +294,7 @@ class Exp(Function):
     def backward(ctx, grad_output):
         a = ctx.saved_tensors[0]
 
-        if grad_output.device == tensor.Device.CPU:
+        if grad_output.device == Device.CPU:
             grad_a = ops_cpu.exp_backward(grad_output.data, a.data)
         else:
             grad_a = ops_gpu.exp_backward(ctx.cl_ctx, ctx.cl_queue, grad_output.data, a.data)
@@ -309,7 +311,7 @@ class Add(Function):
         ctx.save_for_backward(a, b)
         requires_grad = a.requires_grad or b.requires_grad
 
-        if a.device == tensor.Device.CPU:
+        if a.device == Device.CPU:
             out_data = ops_cpu.add_forward(a.data, b.data)
         else:
             out_data = ops_gpu.add_forward(ctx.cl_ctx, ctx.cl_queue, a.data, b.data)
@@ -324,7 +326,7 @@ class Add(Function):
     def backward(ctx, grad_output):
         a, b = ctx.saved_tensors
 
-        if grad_output.device == tensor.Device.CPU:
+        if grad_output.device == Device.CPU:
             grad_a, grad_b = ops_cpu.add_backward(grad_output.data, a.shape, b.shape)
         else:
             grad_a, grad_b = ops_gpu.add_backward(ctx.cl_ctx, ctx.cl_queue, grad_output.data,
@@ -344,7 +346,7 @@ class Sum(Function):
         requires_grad = a.requires_grad
         is_leaf = not requires_grad
 
-        if a.device == tensor.Device.CPU:
+        if a.device == Device.CPU:
             out_data = ops_cpu.sum_forward(a.data, axis, keepdims)
         else:
             out_data = ops_gpu.sum_forward(ctx.cl_ctx, ctx.cl_queue, a.data, axis, keepdims)
@@ -360,7 +362,7 @@ class Sum(Function):
         axis = ctx.axis
         a = ctx.saved_tensors[0]
 
-        if grad_output.device == tensor.Device.CPU:
+        if grad_output.device == Device.CPU:
             grad = ops_cpu.sum_backward(grad_output.data, a.data, axis)
         else:
             grad = ops_gpu.sum_backward(ctx.cl_ctx, ctx.cl_queue, grad_output.data, a.data, axis)
@@ -376,7 +378,7 @@ class Neg(Function):
 
         requires_grad = a.requires_grad
 
-        if a.device == tensor.Device.CPU:
+        if a.device == Device.CPU:
             out_data = ops_cpu.neg_forward(a.data)
         else:
             out_data = ops_gpu.neg_forward(ctx.cl_ctx, ctx.cl_queue, a.data)
@@ -389,7 +391,7 @@ class Neg(Function):
     
     @staticmethod
     def backward(ctx, grad_output):
-        if grad_output.device == tensor.Device.CPU:
+        if grad_output.device == Device.CPU:
             grad = ops_cpu.neg_backward(grad_output.data)
         else:
             grad = ops_gpu.neg_backward(ctx.cl_ctx, ctx.cl_queue, grad_output.data)
@@ -409,7 +411,7 @@ class MatMul(Function):
         requires_grad = a.requires_grad or b.requires_grad
         is_leaf = not requires_grad
 
-        if a.device == tensor.Device.CPU:
+        if a.device == Device.CPU:
             out_data = ops_cpu.matmul_forward(a.data, b.data)
         else:
             out_data = ops_gpu.matmul_forward(ctx.cl_ctx, ctx.cl_queue, a.data, b.data)
@@ -424,7 +426,7 @@ class MatMul(Function):
     def backward(ctx, grad_output):
         a, b = ctx.saved_tensors
 
-        if grad_output.device == tensor.Device.CPU:
+        if grad_output.device == Device.CPU:
             grad_a, grad_b = ops_cpu.matmul_backward(grad_output.data, a.data, b.data)
         else:
             grad_a, grad_b = ops_gpu.matmul_backward(ctx.cl_ctx, ctx.cl_queue, 
@@ -445,7 +447,7 @@ class Pow(Function):
 
         requires_grad = a.requires_grad
 
-        if a.device == tensor.Device.CPU:
+        if a.device == Device.CPU:
             out_data = ops_cpu.pow_forward(a.data, exp)
         else:
             out_data = ops_gpu.pow_forward(ctx.cl_ctx, ctx.cl_queue, a.data, exp)
@@ -461,7 +463,7 @@ class Pow(Function):
         exp = ctx.exp
         a = ctx.saved_tensors[0]
 
-        if grad_output.device == tensor.Device.CPU:
+        if grad_output.device == Device.CPU:
             grad_a = ops_cpu.pow_backward(grad_output.data, a.data, exp)
         else:
             grad_a = ops_gpu.pow_backward(ctx.cl_ctx, ctx.cl_queue, grad_output.data, a.data, exp)
@@ -478,7 +480,7 @@ class Mul(Function):
         ctx.save_for_backward(a, b)
         requires_grad = a.requires_grad or b.requires_grad
 
-        if a.device == tensor.Device.CPU:
+        if a.device == Device.CPU:
             out_data = ops_cpu.mul_forward(a.data, b.data)
         else:
             out_data = ops_gpu.mul_forward(ctx.cl_ctx, ctx.cl_queue, a.data, b.data)
@@ -493,7 +495,7 @@ class Mul(Function):
     def backward(ctx, grad_output):
         a, b = ctx.saved_tensors
 
-        if grad_output.device == tensor.Device.CPU:
+        if grad_output.device == Device.CPU:
             grad_a, grad_b = ops_cpu.mul_backward(grad_output.data, a.data, b.data)
         else:
             grad_a, grad_b = ops_gpu.mul_backward(ctx.cl_ctx, ctx.cl_queue, grad_output.data, a.data, b.data)
@@ -512,7 +514,7 @@ class ReLU(Function):
         requires_grad = a.requires_grad
         is_leaf = not requires_grad
 
-        if a.device == tensor.Device.CPU:
+        if a.device == Device.CPU:
             out_data = ops_cpu.relu_forward(a.data)
         else:
             out_data = ops_gpu.relu_forward(ctx.cl_ctx, ctx.cl_queue, a.data)
@@ -527,7 +529,7 @@ class ReLU(Function):
     def backward(ctx, grad_output):
         a = ctx.saved_tensors[0]
 
-        if grad_output.device == tensor.Device.CPU:
+        if grad_output.device == Device.CPU:
             grad_a = ops_cpu.relu_backward(grad_output.data, a.data)
         else:
             grad_a = ops_gpu.relu_backward(ctx.cl_ctx, ctx.cl_queue, grad_output.data, a.data)
@@ -546,7 +548,7 @@ class Sigmoid(Function):
         requires_grad = a.requires_grad
         is_leaf = not requires_grad
 
-        if a.device == tensor.Device.CPU:
+        if a.device == Device.CPU:
             out_data = ops_cpu.sigmoid_forward(a.data)
         else:
             out_data = ops_gpu.sigmoid_forward(ctx.cl_ctx, ctx.cl_queue, a.data)
@@ -561,7 +563,7 @@ class Sigmoid(Function):
     def backward(ctx, grad_output):
         a = ctx.saved_tensors[0]
 
-        if grad_output.device == tensor.Device.CPU:
+        if grad_output.device == Device.CPU:
             grad_a = ops_cpu.sigmoid_backward(grad_output.data, a.data)
         else:
             grad_a = ops_gpu.sigmoid_backward(ctx.cl_ctx, ctx.cl_queue, grad_output.data, a.data)
@@ -580,7 +582,7 @@ class Tanh(Function):
         requires_grad = a.requires_grad
         is_leaf = not requires_grad
 
-        if a.device == tensor.Device.CPU:
+        if a.device == Device.CPU:
             out_data = ops_cpu.tanh_forward(a.data)
         else:
             out_data = ops_gpu.tanh_forward(ctx.cl_ctx, ctx.cl_queue, a.data)
@@ -595,7 +597,7 @@ class Tanh(Function):
     def backward(ctx, grad_output):
         a = ctx.saved_tensors[0]
 
-        if grad_output.device == tensor.Device.CPU:
+        if grad_output.device == Device.CPU:
             grad_a = ops_cpu.tanh_backward(grad_output.data, a.data)
         else:
             grad_a = ops_gpu.tanh_backward(ctx.cl_ctx, ctx.cl_queue, grad_output.data, a.data)

@@ -103,6 +103,16 @@ class Module:
         if self.__dict__.get('_submodules') is None:
             raise Exception("Module not intialized. "
                             "Did you forget to call super().__init__()?")
+    
+    def gpu(self):
+        r"""Moving all parameter tensors onto the GPU"""
+        for param in self._parameters.items():
+            param.gpu()
+        
+    def cpu(self):
+        r"""Moving all parameter tensors onto the GPU"""
+        for param in self._parameters.items():
+            param.cpu()
 
 
 class Sequential(Module):
@@ -216,8 +226,8 @@ class BatchNorm1d(Module):
         super().__init__()
         self.num_features = num_features
 
-        self.eps = Tensor(eps)
-        self.momentum = Tensor(momentum)
+        self.eps = Tensor(eps, is_parameter=True)
+        self.momentum = Tensor(momentum, is_parameter=True)
 
         # To make the final output affine
         self.gamma = Tensor(np.ones((self.num_features,)), 
@@ -227,9 +237,9 @@ class BatchNorm1d(Module):
 
         # Running mean and var
         self.running_mean = Tensor(np.zeros(self.num_features,), 
-                                   requires_grad=False, is_parameter=False, name="bn_running_mean")
+                                   requires_grad=False, is_parameter=True, name="bn_running_mean")
         self.running_var = Tensor(np.ones(self.num_features,), 
-                                  requires_grad=False, is_parameter=False, name="bn_running_var")
+                                  requires_grad=False, is_parameter=True, name="bn_running_var")
 
     def forward(self, x:Tensor) -> Tensor:
         r"""
@@ -274,8 +284,8 @@ class BatchNorm2d(Module):
         super().__init__()
         self.size = size
 
-        self.eps = Tensor(eps)
-        self.momentum = Tensor(momentum)
+        self.eps = Tensor(eps, is_parameter=True)
+        self.momentum = Tensor(momentum, is_parameter=True)
 
         # To make the final output affine
         self.gamma = Tensor.ones(self.size, requires_grad=True, 
@@ -285,9 +295,9 @@ class BatchNorm2d(Module):
 
         # Running mean and var
         self.running_mean = Tensor.zeros(self.size, requires_grad=False, 
-                                         is_parameter=False, name="bn_running_mean")
+                                         is_parameter=True, name="bn_running_mean")
         self.running_var = Tensor.ones(self.size, requires_grad=False, 
-                                       is_parameter=False, name="bn_running_var")
+                                       is_parameter=True, name="bn_running_var")
 
     def forward(self, x:Tensor) -> Tensor:
         r"""
@@ -487,11 +497,11 @@ class Dropout(Module):
         if self.is_train:
             if self.mask is None:
                 val = np.random.binomial(1, 1.0 - self.p, size=x.shape)
-                self.mask = Tensor(val, name="dropout_mask")
+                self.mask = Tensor(val, name="dropout_mask", is_parameter=True)
             out = x * self.mask
             out.name = 'dropout_res'
             return out
-        return x * Tensor(1 - self.p, name='dropout_prob')
+        return x * Tensor(1 - self.p, name='dropout_prob', is_parameter=True)
 
 
 class CrossEntropyLoss(Module):

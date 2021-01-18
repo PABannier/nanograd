@@ -1,4 +1,5 @@
-from tensor import Tensor, Device
+from tensor import Tensor
+from device import Device
 from autograd_engine import *
 from nn.functional import *
 
@@ -227,7 +228,7 @@ def test_tanh():
     check_val_and_grad(b, b_torch)
     check_val_and_grad(a, a_torch)
 
-def test_sum_full_reduce_forward():
+def test_sum_full_reduce():
     a = Tensor.normal(0, 1, (30, 30, 30), requires_grad=True)
     a_torch = create_identical_torch_tensor(a)
 
@@ -244,7 +245,7 @@ def test_sum_full_reduce_forward():
     check_val_and_grad(b, b_torch, atol=1e-4)
     check_val_and_grad(a, a_torch, atol=1e-4)
 
-def test_sum_reduce_one_axis_forward():
+def test_sum_reduce_one_axis():
     a = Tensor.normal(0, 1, (30, 30, 60), requires_grad=True)
     a_torch = create_identical_torch_tensor(a)
 
@@ -261,7 +262,7 @@ def test_sum_reduce_one_axis_forward():
     check_val_and_grad(b, b_torch, atol=1e-4)
     check_val_and_grad(a, a_torch, atol=1e-4)
 
-def test_sum_reduce_axis_forward():
+def test_sum_reduce_axis():
     a = Tensor.normal(0, 1, (30, 30, 30), requires_grad=True)
     a_torch = create_identical_torch_tensor(a)
 
@@ -278,8 +279,8 @@ def test_sum_reduce_axis_forward():
     check_val_and_grad(b, b_torch, atol=1e-4)
     check_val_and_grad(a, a_torch, atol=1e-4)
 
-def test_max_full_reduce_forward():
-    a = Tensor.normal(0, 1, (30, 30, 30))
+def test_max_full_reduce():
+    a = Tensor.normal(0, 1, (30, 30, 30), requires_grad=True)
     a_torch = create_identical_torch_tensor(a)
 
     a.gpu()
@@ -287,12 +288,16 @@ def test_max_full_reduce_forward():
     b = a.max()
     b_torch = a_torch.max()
 
-    b.cpu()
+    b.backward()
+    b_torch.sum().backward()
 
-    check_val(b, b_torch)
+    b.cpu(), a.cpu()
+
+    check_val_and_grad(b, b_torch)
+    check_val_and_grad(a, a_torch)
 
 def test_max_reduce_one_axis_forward():
-    a = Tensor.normal(0, 1, (30, 30, 60))
+    a = Tensor.normal(0, 1, (30, 30, 60), requires_grad=True)
     a_torch = create_identical_torch_tensor(a)
 
     a.gpu()
@@ -300,12 +305,16 @@ def test_max_reduce_one_axis_forward():
     b = a.max(axis=2)
     b_torch, _ = a_torch.max(axis=2)
 
-    b.cpu()
+    b.backward()
+    b_torch.sum().backward()
 
-    check_val(b, b_torch)
+    b.cpu(), a.cpu()
 
-def test_min_full_reduce_forward():
-    a = Tensor.normal(0, 1, (30, 30, 30))
+    check_val_and_grad(b, b_torch)
+    check_val_and_grad(a, a_torch)
+
+def test_min_full_reduce():
+    a = Tensor.normal(0, 1, (30, 30, 30), requires_grad=True)
     a_torch = create_identical_torch_tensor(a)
 
     a.gpu()
@@ -313,12 +322,16 @@ def test_min_full_reduce_forward():
     b = a.min()
     b_torch = a_torch.min()
 
-    b.cpu()
+    b.backward()
+    b_torch.sum().backward()
 
-    check_val(b, b_torch)
+    b.cpu(), a.cpu()
 
-def test_min_reduce_one_axis_forward():
-    a = Tensor.normal(0, 1, (30, 30, 60))
+    check_val_and_grad(b, b_torch)
+    check_val_and_grad(a, a_torch)
+
+def test_min_reduce_one_axis():
+    a = Tensor.normal(0, 1, (30, 30, 60), requires_grad=True)
     a_torch = create_identical_torch_tensor(a)
 
     a.gpu()
@@ -326,9 +339,13 @@ def test_min_reduce_one_axis_forward():
     b = a.min(axis=2)
     b_torch, _ = a_torch.min(axis=2)
 
-    b.cpu()
+    b.backward()
+    b_torch.sum().backward()
 
-    check_val(b, b_torch)
+    b.cpu(), a.cpu()
+
+    check_val_and_grad(b, b_torch)
+    check_val_and_grad(a, a_torch)
 
 def test_reshape():
     a = Tensor.normal(0, 1, (30, 30, 30), requires_grad=True)

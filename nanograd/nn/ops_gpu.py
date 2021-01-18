@@ -1,7 +1,16 @@
 # Inspired from: https://github.com/geohot/tinygrad/blob/master/tinygrad/ops_gpu.py
 import numpy as np
-import pyopencl as cl
 import functools
+
+try:
+    import pyopencl as cl
+    PYOPENCL_AVAILABLE = True
+
+except ImportError:
+    PYOPENCL_AVAILABLE = False
+    warnings.warn("PyOpenCL is not available on this computer. Can't use \
+                   parallel computing. Please install it to move comptutations \
+                   to move the GPU.")
 
 # *************************************
 # ****** OpenCL helper functions ******
@@ -355,11 +364,19 @@ def reshape_backward(ctx, queue, grad_output, shape):
     assert np.prod(new_shape) == np.prod(shape), "Inconsistent array reshape size"
     return GPUBuffer(ctx, new_shape, hostbuf=grad_output)
 
-def max_backward(ctx, queue, grad_output, a):
-    raise NotImplementedError
+def max_backward(ctx, queue, grad_output, inp, out, axis):
+    shape = [1 if axis is None or i in axis else inp.shape[i] for i in range(len(inp.shape))]
+    ret2 = element_wise_binary_op(ctx, queue, "1.0*(a==b)", inp, GPUBuffer(ctx, shape, out))
+    div = reduce_op(ctx, queue, "out += a", "out+1e-10", ret2, axis=axis)
+    ret3 = element_wise_binary_op(ctx, queue, "a/b", ret2, GPUBuffer(ctx, shape, div))
+    return element_wise_binary_op(ctx, queue, 'a*b', ret3, GPUBuffer(ctx, shape, grad_output))
 
-def min_backward(ctx, queue, grad_output, a):
-    raise NotImplementedError
+def min_backward(ctx, queue, grad_output, inp, out, axis):
+    shape = [1 if axis is None or i in axis else inp.shape[i] for i in range(len(inp.shape))]
+    ret2 = element_wise_binary_op(ctx, queue, "1.0*(a==b)", inp, GPUBuffer(ctx, shape, out))
+    div = reduce_op(ctx, queue, "out += a", "out+1e-10", ret2, axis=axis)
+    ret3 = element_wise_binary_op(ctx, queue, "a/b", ret2, GPUBuffer(ctx, shape, div))
+    return element_wise_binary_op(ctx, queue, 'a*b', ret3, GPUBuffer(ctx, shape, grad_output))
 
 def sum_backward(ctx, queue, grad_output, a, axis):
     axis = [axis] if type(axis) == int else axis

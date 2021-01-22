@@ -79,22 +79,23 @@ def get_same_pytorch_mlp(model):
     layers = []
     for l in model.layers:
         if isinstance(l, nnn.Linear):
-            layers.append(nn.Linear(l.in_features, l.out_features))
+            layers.append(nn.Linear(l.in_features, l.out_features, bias=l.with_bias))
             layers[-1].weight = nn.Parameter(
-                torch.tensor(l.weight.data).double())
-            layers[-1].bias = nn.Parameter(torch.tensor(l.bias.data).double())
+                torch.tensor(l.weight.data).float())
+            if l.with_bias:
+                layers[-1].bias = nn.Parameter(torch.tensor(l.bias.data).float())
 
         elif isinstance(l, nnn.BatchNorm1d):
             layers.append(nn.BatchNorm1d(int(l.num_features)))
             layers[-1].weight = nn.Parameter(
-                torch.tensor(l.gamma.data).double())
-            layers[-1].bias = nn.Parameter(torch.tensor(l.beta.data).double())
+                torch.tensor(l.gamma.data).float())
+            layers[-1].bias = nn.Parameter(torch.tensor(l.beta.data).float())
 
         elif isinstance(l, nnn.BatchNorm2d):
             layers.append(nn.BatchNorm2d(l.size))
             layers[-1].weight = nn.Parameter(
-                torch.tensor(l.gamma.data).double())
-            layers[-1].bias = nn.Parameter(torch.tensor(l.beta.data).double())
+                torch.tensor(l.gamma.data).float())
+            layers[-1].bias = nn.Parameter(torch.tensor(l.beta.data).float())
 
         elif isinstance(l, nnn.ReLU):
             layers.append(nn.ReLU())
@@ -106,15 +107,15 @@ def get_same_pytorch_mlp(model):
             layers.append(nn.Conv1d(int(l.in_channel), int(l.out_channel), \
                                     l.kernel_size, int(l.stride), int(l.padding)))
             layers[-1].weight = nn.Parameter(
-                torch.tensor(l.weight.data).double())
-            layers[-1].bias = nn.Parameter(torch.tensor(l.bias.data).double())
+                torch.tensor(l.weight.data).float())
+            layers[-1].bias = nn.Parameter(torch.tensor(l.bias.data).float())
 
         elif isinstance(l, nnn.Conv2d):
             layers.append(nn.Conv2d(int(l.in_channel), int(l.out_channel), \
                                     l.kernel_size, int(l.stride), int(l.padding)))
             layers[-1].weight = nn.Parameter(
-                torch.tensor(l.weight.data).double())
-            layers[-1].bias = nn.Parameter(torch.tensor(l.bias.data).double())
+                torch.tensor(l.weight.data).float())
+            layers[-1].bias = nn.Parameter(torch.tensor(l.bias.data).float())
         
         elif isinstance(l, nnn.AvgPool2d):
             layers.append(nn.AvgPool2d(l.kernel_size, l.stride))
@@ -159,8 +160,8 @@ def generate_dataset_for_mytorch_model(model, batch_size):
     """
     in_features = get_mytorch_model_input_features(model)
     out_features = get_mytorch_model_output_features(model)
-    x = np.random.randn(batch_size, in_features)
-    y = np.random.randint(out_features, size=(batch_size,))
+    x = np.random.randn(batch_size, in_features).astype(np.float32)
+    y = np.random.randint(out_features, size=(batch_size,)).astype(np.float32)
     return x, y
 
 
@@ -201,13 +202,24 @@ def forward_(mytorch_model, mytorch_criterion, pytorch_model,
     return (mytorch_x, mytorch_y, pytorch_x, pytorch_y)
 
 
-def backward_(mytorch_x, mytorch_y, mytorch_model, pytorch_x, pytorch_y, pytorch_model):
+def backward_(mytorch_x, mytorch_y, mytorch_model, pytorch_x, pytorch_y, pytorch_model, test_on_gpu=False):
     """
     Calls backward on both mytorch and pytorch outputs, and returns whether
     computed gradients match.
     """
+
+    if test_on_gpu:
+        mytorch_y.gpu()
+
+
     mytorch_y.backward()
     pytorch_y.sum().backward()
+
+    if test_on_gpu:
+        mytorch_y.cpu()
+        mytorch_model.cpu()
+        mytorch_x.cpu()
+
     check_gradients(mytorch_x, pytorch_x, mytorch_model, pytorch_model)
     check_model_param_settings(mytorch_model)
 
@@ -226,15 +238,18 @@ def check_gradients(mytorch_x, pytorch_x, mytorch_model, pytorch_model):
     pytorch_linear_layers = get_pytorch_linear_layers(pytorch_model)
     for mytorch_linear, pytorch_linear in zip(mytorch_linear_layers, pytorch_linear_layers):
         pytorch_dW = pytorch_linear.weight.grad.detach().numpy()
-        pytorch_db = pytorch_linear.bias.grad.detach().numpy()
         mytorch_dW = mytorch_linear.weight.grad.data
-        mytorch_db = mytorch_linear.bias.grad.data
-
         assert assertions_all(mytorch_dW, pytorch_dW, 'dW'), "Gradient Check Failed"
-        assert assertions_all(mytorch_db, pytorch_db, 'db'), "Gradient Check Failed"
+
+        try:
+            pytorch_db = pytorch_linear.bias.grad.detach().numpy()
+            mytorch_db = mytorch_linear.bias.grad.data
+            assert assertions_all(mytorch_db, pytorch_db, 'db'), "Gradient Check Failed"
+        except AttributeError:
+            pass
 
 
-def assertions_all(user_vals, expected_vals, test_name, rtol=1e-5, atol=1e-8):
+def assertions_all(user_vals, expected_vals, test_name, rtol=1e-5, atol=1e-5):
     if not assertions(user_vals, expected_vals, 'type', test_name, rtol=rtol, atol=atol):
         return False
     if not assertions(user_vals, expected_vals, 'shape', test_name, rtol=rtol, atol=atol):
@@ -321,6 +336,8 @@ def check_model_param_settings(model):
 
             try:
                 check_param_tensor(l.bias)
+            except AttributeError:
+                pass
             except Exception:
                 # If any checks fail print these messages index of the error printed below
                 print(f"*WARNING: Layer #{idx} ({type(l).__name__}) has parameter (bias) tensor with incorrect settings:")
@@ -375,7 +392,7 @@ def forward_test(model, criterion=None, batch_size=(2,5), test_on_gpu=False):
     forward_(model, criterion, pytorch_model, pytorch_criterion, x, y, test_on_gpu=test_on_gpu)
 
 
-def forward_backward_test(model, criterion=None, batch_size=(2,5)):
+def forward_backward_test(model, criterion=None, batch_size=(2,5), test_on_gpu=False):
     """
         Tests forward and back, printing whether a mismatch occurs in forward or
         backwards.
@@ -387,9 +404,9 @@ def forward_backward_test(model, criterion=None, batch_size=(2,5)):
     pytorch_criterion = get_same_pytorch_criterion(criterion)
 
     (mx, my, px, py) = forward_(model, criterion, pytorch_model,
-                                pytorch_criterion, x, y)
+                                pytorch_criterion, x, y, test_on_gpu=test_on_gpu)
 
-    backward_(mx, my, model, px, py, pytorch_model)
+    backward_(mx, my, model, px, py, pytorch_model, test_on_gpu=test_on_gpu)
 
 
 def step_test(model, optimizer, train_steps, eval_steps,

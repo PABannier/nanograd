@@ -244,7 +244,20 @@ def matmul_op(ctx, queue, a, b):
     return ret
 
 def one_hot_encoding_op(ctx, queue, a, num_classes):
-    raise NotImplementedError
+    ret = GPUBuffer(ctx, (a.shape[0], num_classes))
+    size = np.int32(a.shape[0])
+    prgm = cl.Program(ctx, """
+        __kernel void one_hot(__global const float *labels, __global float *res, int size) {
+            int gid0 = get_global_id(0);
+
+            int label = labels[gid0];
+            res[gid0 + size * label] = 1;
+        }
+    """).build()
+
+    prgm.one_hot(queue, [size], None, a.cl, ret.cl, size)
+    return ret
+
 
 # *************************************
 # *********** Forward passes **********

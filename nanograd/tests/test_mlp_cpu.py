@@ -8,6 +8,9 @@ from torch.autograd import Variable
 
 from tensor import Tensor
 
+import os
+os.environ['PYOPENCL_COMPILER_OUTPUT'] = '1'
+
 SEED = 42
 
 

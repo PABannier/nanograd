@@ -1,4 +1,5 @@
 from tensor import Tensor
+from device import Device
 import nn.functional as F
 
 import numpy as np
@@ -44,6 +45,7 @@ class Module:
     def __init__(self) -> None:
         self._submodules = {} # Submodules of the class
         self._parameters = {} # Trainable parameters in modules and its submodules
+        self._tensors = {}
 
         self.is_train = True
     
@@ -85,12 +87,20 @@ class Module:
         self._ensure_is_initialized()
         self._submodules[name] = value
     
+    def add_tensor(self, name, value) -> None:
+        r"""Stores tensors"""
+        self._ensure_is_initialized()
+        self._tensors[name] = value
+    
     def __setattr__(self, name, value):
         r"""Stores params or modules that you provide"""
         if self.is_parameter(value):
             self.add_parameter(name, value)
+            self.add_tensor(name, value)
         elif isinstance(value, Module):
             self.add_module(name, value)
+        elif isinstance(value, Tensor):
+            self.add_tensor(name, value)
 
         object.__setattr__(self, name, value)
 
@@ -104,15 +114,15 @@ class Module:
             raise Exception("Module not intialized. "
                             "Did you forget to call super().__init__()?")
     
-    def gpu(self):
-        r"""Moving all parameter tensors onto the GPU"""
-        for param in self._parameters.items():
-            param[1].gpu()
-        
     def cpu(self):
         r"""Moving all parameter tensors onto the GPU"""
-        for param in self._parameters.items():
-            param[1].cpu()
+        for tensor in self._tensors.items():
+            tensor[1].cpu()
+        
+    def gpu(self):
+        r"""Moving all parameter tensors onto the GPU"""
+        for tensor in self._tensors.items():
+            tensor[1].gpu()
 
 
 class Sequential(Module):
@@ -192,18 +202,21 @@ class Linear(Module):
             Module (mytorch.nn.module.Module)
     """
     def __init__(self, in_features:int, out_features:int, 
-                 weight_initialization:str="kaiming_normal", fan_mode:str="fan_in") -> None:
+                 weight_initialization:str="kaiming_normal", fan_mode:str="fan_in",
+                 with_bias=True) -> None:
         super().__init__()
 
         self.in_features = in_features
         self.out_features = out_features
+        self.with_bias = with_bias
 
         self.weight = init_weights(
             (self.out_features, self.in_features), weight_initialization, fan_mode,
             requires_grad=True, is_parameter=True, name="lin_weight")
-
-        self.bias = Tensor.zeros(self.out_features, requires_grad=True, 
-                                 is_parameter=True, name="lin_bias")
+        
+        if self.with_bias:
+            self.bias = Tensor.zeros((self.out_features, ), requires_grad=True, 
+                                    is_parameter=True, name="lin_bias")
 
     def forward(self, x:Tensor) -> Tensor:
         r"""
@@ -212,7 +225,11 @@ class Linear(Module):
             Returns:
                 Tensor: (batch_size, out_features)
         """
-        out = x @ self.weight.T() + self.bias     
+        if self.with_bias:
+            out = x @ self.weight.T() + self.bias
+        else:
+            out = x @ self.weight.T()
+           
         out.name = "lin_res"
         return out   
 
@@ -236,16 +253,14 @@ class BatchNorm1d(Module):
         self.eps = Tensor(eps, is_parameter=False)
         self.momentum = Tensor(momentum, is_parameter=False)
 
-        # To make the final output affine
-        self.gamma = Tensor(np.ones((self.num_features,)), 
+        self.gamma = Tensor.ones((self.num_features, ), 
                                     requires_grad=True, is_parameter=True, name="bn_gamma")
-        self.beta = Tensor(np.zeros((self.num_features,)), 
+        self.beta = Tensor.zeros((self.num_features, ), 
                                     requires_grad=True, is_parameter=True, name="bn_beta")
-
-        # Running mean and var
-        self.running_mean = Tensor(np.zeros(self.num_features,), 
+        
+        self.running_mean = Tensor.zeros((self.num_features,), 
                                    requires_grad=False, is_parameter=False, name="bn_running_mean")
-        self.running_var = Tensor(np.ones(self.num_features,), 
+        self.running_var = Tensor.ones((self.num_features,), 
                                   requires_grad=False, is_parameter=False, name="bn_running_var")
 
     def forward(self, x:Tensor) -> Tensor:
@@ -258,10 +273,10 @@ class BatchNorm1d(Module):
         if self.is_train == True:
             batch_mean = x.mean(0)
             batch_var = ((x - batch_mean) ** 2).mean(0)
-            batch_empirical_var = ((x - batch_mean) ** 2).sum(0) / Tensor(x.shape[0] - 1)
+            batch_empirical_var = ((x - batch_mean) ** 2).sum(0) / (x.shape[0] - 1)
 
-            self.running_mean = (Tensor(1) - self.momentum) * self.running_mean + self.momentum * batch_mean
-            self.running_var = (Tensor(1) - self.momentum) * self.running_var + self.momentum * batch_empirical_var
+            self.running_mean = (1 - self.momentum) * self.running_mean + self.momentum * batch_mean
+            self.running_var = (1 - self.momentum) * self.running_var + self.momentum * batch_empirical_var
 
             return self._normalize(x, batch_mean, batch_var)
         else:
@@ -294,17 +309,11 @@ class BatchNorm2d(Module):
         self.eps = Tensor(eps, is_parameter=False)
         self.momentum = Tensor(momentum, is_parameter=False)
 
-        # To make the final output affine
-        self.gamma = Tensor.ones(self.size, requires_grad=True, 
-                                 is_parameter=True, name="bn_gamma")
-        self.beta = Tensor.zeros(self.size, requires_grad=True, 
-                                 is_parameter=True, name="bn_beta")
+        self.gamma = Tensor.ones(self.size, requires_grad=True, is_parameter=True, name="bn_gamma")
+        self.beta = Tensor.zeros(self.size, requires_grad=True, is_parameter=True, name="bn_beta")
 
-        # Running mean and var
-        self.running_mean = Tensor.zeros(self.size, requires_grad=False, 
-                                         is_parameter=False, name="bn_running_mean")
-        self.running_var = Tensor.ones(self.size, requires_grad=False, 
-                                       is_parameter=False, name="bn_running_var")
+        self.running_mean = Tensor.zeros(self.size, requires_grad=False, is_parameter=False, name="bn_running_mean")
+        self.running_var = Tensor.ones(self.size, requires_grad=False, is_parameter=False, name="bn_running_var")
 
     def forward(self, x:Tensor) -> Tensor:
         r"""
@@ -318,10 +327,10 @@ class BatchNorm2d(Module):
         if self.is_train == True:
             batch_mean = x.mean(axis=(0, 2, 3))
             batch_var = ((x - batch_mean.reshape(shape=[1, -1, 1, 1])) ** 2).mean(axis=(0, 2, 3))
-            batch_empirical_var = ((x - batch_mean.reshape(shape=[1, -1, 1, 1])) ** 2).sum(axis=(0, 2, 3)) / Tensor(x.shape[0] - 1)
+            batch_empirical_var = ((x - batch_mean.reshape(shape=[1, -1, 1, 1])) ** 2).sum(axis=(0, 2, 3)) / (x.shape[0] - 1)
 
-            self.running_mean = (Tensor(1) - self.momentum) * self.running_mean + self.momentum * batch_mean
-            self.running_var = (Tensor(1) - self.momentum) * self.running_var + self.momentum * batch_empirical_var
+            self.running_mean = (1 - self.momentum) * self.running_mean + self.momentum * batch_mean
+            self.running_var = (1 - self.momentum) * self.running_var + self.momentum * batch_empirical_var
 
             return self._normalize(x, batch_mean, batch_var)
         else:
@@ -558,7 +567,7 @@ class ReLU(Module):
             Returns:
                 Tensor: (batch_size, num_features)
         """
-        return F.ReLU.apply(x)
+        return x.relu()
 
 
 class Sigmoid(Module):

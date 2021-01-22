@@ -21,42 +21,34 @@ def cross_entropy(predicted, target):
             Tensor: the loss as a float, in a tensor of shape ()
     """
     batch_size, num_classes = predicted.shape
-    labels = to_one_hot(target, num_classes)
+    labels = target.one_hot(num_classes)
 
     a = tensor.Tensor(np.amax(predicted.data, axis=1)).reshape((batch_size, 1))
     log_softmax = predicted - a - tensor.Tensor.sum((predicted - a).exp(), axis=1).log().reshape((batch_size, 1))
 
-    nll_loss = tensor.Tensor.sum(log_softmax * labels) / tensor.Tensor(-batch_size)
+    nll_loss = - tensor.Tensor.sum(log_softmax * labels) / batch_size
 
     return nll_loss
 
 
-def to_one_hot(arr, num_classes:int):
-    """
-        Converts a tensor of classes to one-hot, useful in XELoss
+class OneHot(Function):
+    @staticmethod
+    def forward(ctx, a, num_classes):
+        if not type(a).__name__ == "Tensor":
+            raise Exception("Arg for OneHot must be tensor: {}".format(type(a).__name__))
 
-        Example:
-        >>> to_one_hot(Tensor(np.array([1, 2, 0, 0])), 3)
-        [[0, 1, 0],
-        [0, 0, 1],
-        [1, 0, 0],
-        [1, 0, 0]]
-
-        Args:
-            arr (Tensor): Condensed tensor of label indices
-            num_classes (int): Number of possible classes in dataset
-                            For instance, MNIST would have `num_classes==10`
-        Returns:
-            Tensor: one-hot tensor
-    """
-    if arr.device == Device.CPU:
-        idx = arr.data.astype(int)
-        out = np.zeros((idx.shape[0], num_classes))
-        out[np.arange(len(out)), idx] = 1
-    else:
-        out = ops_gpu.one_hot_encoding_op(arr.data, num_classes)
+        if a.device == Device.CPU:
+            idx = a.data.astype(int)
+            out = np.zeros((idx.shape[0], num_classes))
+            out[np.arange(len(out)), idx] = 1
+        else:
+            out = ops_gpu.one_hot_encoding_op(ctx.cl_ctx, ctx.cl_queue, a.data, num_classes)
+        
+        return tensor.Tensor(out, device=a.device, requires_grad=True)
     
-    return tensor.Tensor(out, device=arr.device, requires_grad=True)
+    @staticmethod
+    def backward(ctx, grad_output):
+        return grad_output,
 
 
 class Slice(Function):
@@ -99,8 +91,8 @@ class Slice(Function):
 class Transpose(Function):
     @staticmethod
     def forward(ctx, a):
-        if not len(a.shape) == 2:
-            raise Exception("Arg for Transpose must be 2D tensor: {}".format(a.shape))
+        if len(a.shape) > 2:
+            raise Exception("Arg for Transpose must be 1D or 2D tensor: {}".format(a.shape))
         
         requires_grad = a.requires_grad
         is_leaf = not requires_grad

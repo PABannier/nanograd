@@ -23,9 +23,6 @@ def test_add():
     e.backward()
     e_torch.sum().backward()
 
-    print(c.grad)
-    print(c_torch.grad)
-
     check_val_and_grad(a, a_torch)
     check_val_and_grad(b, b_torch)
     check_val_and_grad(c, c_torch)
@@ -49,6 +46,51 @@ def test_add_broadcast():
     check_val_and_grad(c, c_torch)
 
 
+def test_add_broadcast_2():
+    a = Tensor.normal(0, 1, (20, 30), requires_grad=True)
+    b = Tensor.normal(0, 1, (30, ), requires_grad=True)
+
+    a_torch, b_torch = create_identical_torch_tensor(a, b)
+
+    c = a + b.T()
+    c_torch = a_torch + b_torch.T
+
+    c.backward()
+    c_torch.sum().backward()
+
+    check_val_and_grad(c, c_torch)
+    check_val_and_grad(b, b_torch)
+    check_val_and_grad(a, a_torch)
+
+
+def test_add_broadcast_3():
+    a = Tensor.normal(0, 1, (3, 3, 3), requires_grad=True)
+    a_torch = create_identical_torch_tensor(a)
+
+    b = a + 1
+    b_torch = a_torch + 1
+
+    b.backward()
+    b_torch.sum().backward()
+
+    check_val_and_grad(b, b_torch)
+    check_val_and_grad(a, a_torch)
+
+
+def test_add_broadcast_4():
+    a = Tensor.normal(0, 1, (3, 3, 3), requires_grad=True)
+    a_torch = create_identical_torch_tensor(a)
+
+    b = 1 + a
+    b_torch = 1 + a_torch
+
+    b.backward()
+    b_torch.sum().backward()
+
+    check_val_and_grad(b, b_torch)
+    check_val_and_grad(a, a_torch)
+
+
 def test_sub_broadcast():
     a = Tensor.randn(3, 2, 1, requires_grad=True)
     b = Tensor.randn(3, 1, 1, requires_grad=True)
@@ -63,6 +105,34 @@ def test_sub_broadcast():
     check_val_and_grad(a, a_torch)
     check_val_and_grad(b, b_torch)
     check_val_and_grad(c, c_torch)
+
+
+def test_sub_broadcast_2():
+    a = Tensor.normal(0, 1, (3, 3, 3), requires_grad=True)
+    a_torch = create_identical_torch_tensor(a)
+
+    b = a - 1
+    b_torch = a_torch - 1
+
+    b.backward()
+    b_torch.sum().backward()
+
+    check_val_and_grad(b, b_torch)
+    check_val_and_grad(a, a_torch)
+
+
+def test_sub_broadcast_3():
+    a = Tensor.normal(0, 1, (3, 3, 3), requires_grad=True)
+    a_torch = create_identical_torch_tensor(a)
+
+    b = 2 - a
+    b_torch = 2 - a_torch
+
+    b.backward()
+    b_torch.sum().backward()
+
+    check_val_and_grad(b, b_torch)
+    check_val_and_grad(a, a_torch)
 
 
 def test_neg():
@@ -109,6 +179,34 @@ def test_mul_broadcast():
     check_val_and_grad(a, a_torch)
     check_val_and_grad(b, b_torch)
     check_val_and_grad(c, c_torch)
+
+
+def test_mul_broadcast_2():
+    a = Tensor.normal(0, 1, (3, 3, 3), requires_grad=True)
+    a_torch = create_identical_torch_tensor(a)
+
+    b = a * 2
+    b_torch = a_torch * 2
+
+    b.backward()
+    b_torch.sum().backward()
+
+    check_val_and_grad(b, b_torch)
+    check_val_and_grad(a, a_torch)
+
+
+def test_mul_broadcast_3():
+    a = Tensor.normal(0, 1, (3, 3, 3), requires_grad=True)
+    a_torch = create_identical_torch_tensor(a)
+
+    b = 3 * a
+    b_torch = 3 * a_torch
+
+    b.backward()
+    b_torch.sum().backward()
+
+    check_val_and_grad(b, b_torch)
+    check_val_and_grad(a, a_torch)
 
 
 def test_div():
@@ -169,7 +267,7 @@ def test_transpose():
 
     check_val_and_grad(a, a_torch)
     check_val_and_grad(b, b_torch)
-
+    
 
 def test_sum():
     a = Tensor.randn(20, 20, requires_grad=True)
@@ -362,6 +460,7 @@ def test_min():
     check_val_and_grad(a, a_torch)
     check_val_and_grad(b, b_torch)
 
+
 def test_max():
     a = Tensor.normal(0, 1, (30, 40, 20, 10), requires_grad=True)
     a_torch = create_identical_torch_tensor(a)
@@ -399,3 +498,21 @@ def test_multiple():
     check_val_and_grad(c, c_torch)
     check_val_and_grad(d, d_torch)
     check_val_and_grad(e, e_torch)
+
+
+def test_multiple_2():
+    a = Tensor.normal(30, 1, (3, 3), requires_grad=True)
+    a_torch = create_identical_torch_tensor(a)
+
+    b = 3 * (1 - a)
+    b_torch = 3 * (1 - a_torch)
+
+    b_torch.sum().backward()
+    b.backward()
+
+    print(a_torch.grad)
+    print(a.grad)
+
+    check_val_and_grad(a, a_torch)
+    check_val_and_grad(b, b_torch)
+

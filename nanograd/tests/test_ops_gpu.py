@@ -33,6 +33,28 @@ def test_add():
     check_val_and_grad(b, b_torch)
     check_val_and_grad(a, a_torch)
 
+
+def test_add_broadcast():
+    a = Tensor.normal(0, 1, (20, 30), requires_grad=True)
+    b = Tensor.normal(0, 1, (20, 1), requires_grad=True)
+
+    a_torch, b_torch = create_identical_torch_tensor(a, b)
+
+    a.gpu(), b.gpu()
+
+    c = a + b
+    c_torch = a_torch + b_torch
+
+    c.backward()
+    c_torch.sum().backward()
+
+    a.cpu(), b.cpu(), c.cpu()
+
+    check_val_and_grad(c, c_torch)
+    check_val_and_grad(b, b_torch)
+    check_val_and_grad(a, a_torch)
+
+
 def test_neg():
     a = Tensor.normal(0, 1, (8, 10, 10), requires_grad=True)
     a_torch = create_identical_torch_tensor(a)
@@ -48,6 +70,7 @@ def test_neg():
 
     check_val_and_grad(b, b_torch)
     check_val_and_grad(a, a_torch)
+
 
 def test_sub():
     a = Tensor.normal(0, 1, (3, 3, 3), requires_grad=True)
@@ -70,6 +93,7 @@ def test_sub():
     check_val_and_grad(b, b_torch)
     check_val_and_grad(a, a_torch)
 
+
 def test_mul():
     a = Tensor.normal(30, 2, (3, 2, 1), requires_grad=True)
     b = Tensor.normal(30, 2, (3, 2, 3), requires_grad=True)
@@ -91,6 +115,7 @@ def test_mul():
     check_val_and_grad(b, b_torch)
     check_val_and_grad(a, a_torch)
 
+
 def test_log():
     a = Tensor.normal(30, 1, (8, 3, 10, 10), requires_grad=True)
     a_torch = create_identical_torch_tensor(a)
@@ -106,6 +131,7 @@ def test_log():
 
     check_val_and_grad(b, b_torch)
     check_val_and_grad(a, a_torch)
+
 
 def test_exp():
     a = Tensor.normal(4, 1, (8, 3, 10, 10), requires_grad=True)
@@ -123,6 +149,7 @@ def test_exp():
     check_val_and_grad(b, b_torch)
     check_val_and_grad(a, a_torch)
 
+
 def test_pow():
     a = Tensor.normal(30, 1, (20, 20), requires_grad=True)
     a_torch = create_identical_torch_tensor(a)
@@ -139,6 +166,7 @@ def test_pow():
     check_val_and_grad(a, a_torch)
     check_val_and_grad(d, d_torch)
 
+
 def test_pow_neg():
     a = Tensor.normal(30, 1, (20, 20), requires_grad=True)
     a_torch = create_identical_torch_tensor(a)
@@ -154,6 +182,7 @@ def test_pow_neg():
 
     check_val_and_grad(a, a_torch)
     check_val_and_grad(c, c_torch)
+
 
 def test_div():
     a = Tensor.normal(30, 2, (3, 2, 1), requires_grad=True)
@@ -194,6 +223,7 @@ def test_relu():
     check_val_and_grad(b, b_torch)
     check_val_and_grad(a, a_torch)
 
+
 def test_sigmoid(): 
     a = Tensor.randn(20, 20, requires_grad=True)
     a_torch = create_identical_torch_tensor(a)
@@ -210,6 +240,7 @@ def test_sigmoid():
 
     check_val_and_grad(b, b_torch)
     check_val_and_grad(a, a_torch)
+
 
 def test_tanh():
     a = Tensor.randn(20, 20, requires_grad=True)
@@ -228,6 +259,7 @@ def test_tanh():
     check_val_and_grad(b, b_torch)
     check_val_and_grad(a, a_torch)
 
+
 def test_sum_full_reduce():
     a = Tensor.normal(0, 1, (30, 30, 30), requires_grad=True)
     a_torch = create_identical_torch_tensor(a)
@@ -244,6 +276,7 @@ def test_sum_full_reduce():
 
     check_val_and_grad(b, b_torch, atol=1e-4)
     check_val_and_grad(a, a_torch, atol=1e-4)
+
 
 def test_sum_reduce_one_axis():
     a = Tensor.normal(0, 1, (30, 30, 60), requires_grad=True)
@@ -262,6 +295,7 @@ def test_sum_reduce_one_axis():
     check_val_and_grad(b, b_torch, atol=1e-4)
     check_val_and_grad(a, a_torch, atol=1e-4)
 
+
 def test_sum_reduce_axis():
     a = Tensor.normal(0, 1, (30, 30, 30), requires_grad=True)
     a_torch = create_identical_torch_tensor(a)
@@ -278,6 +312,7 @@ def test_sum_reduce_axis():
 
     check_val_and_grad(b, b_torch, atol=1e-4)
     check_val_and_grad(a, a_torch, atol=1e-4)
+
 
 def test_max_full_reduce():
     a = Tensor.normal(0, 1, (30, 30, 30), requires_grad=True)
@@ -296,6 +331,7 @@ def test_max_full_reduce():
     check_val_and_grad(b, b_torch)
     check_val_and_grad(a, a_torch)
 
+
 def test_max_reduce_one_axis_forward():
     a = Tensor.normal(0, 1, (30, 30, 60), requires_grad=True)
     a_torch = create_identical_torch_tensor(a)
@@ -312,6 +348,7 @@ def test_max_reduce_one_axis_forward():
 
     check_val_and_grad(b, b_torch)
     check_val_and_grad(a, a_torch)
+
 
 def test_min_full_reduce():
     a = Tensor.normal(0, 1, (30, 30, 30), requires_grad=True)
@@ -330,6 +367,7 @@ def test_min_full_reduce():
     check_val_and_grad(b, b_torch)
     check_val_and_grad(a, a_torch)
 
+
 def test_min_reduce_one_axis():
     a = Tensor.normal(0, 1, (30, 30, 60), requires_grad=True)
     a_torch = create_identical_torch_tensor(a)
@@ -346,6 +384,7 @@ def test_min_reduce_one_axis():
 
     check_val_and_grad(b, b_torch)
     check_val_and_grad(a, a_torch)
+
 
 def test_reshape():
     a = Tensor.normal(0, 1, (30, 30, 30), requires_grad=True)
@@ -364,6 +403,7 @@ def test_reshape():
     check_val_and_grad(b, b_torch)
     check_val_and_grad(a, a_torch)
 
+
 def test_transpose():
     a = Tensor.normal(0, 1, (10, 5), requires_grad=True)
     a_torch = create_identical_torch_tensor(a)
@@ -380,6 +420,7 @@ def test_transpose():
 
     check_val_and_grad(b, b_torch)
     check_val_and_grad(a, a_torch)
+
 
 def test_slice():
     a = Tensor.normal(0, 1, (30, 40, 20, 10), requires_grad=True)
@@ -398,6 +439,7 @@ def test_slice():
 
     check_val_and_grad(a, a_torch)
     check_val_and_grad(b, b_torch)
+
 
 def test_matmul():
     a = Tensor.normal(0, 1, (30, 15), requires_grad=True)
@@ -419,6 +461,7 @@ def test_matmul():
     check_val_and_grad(b, b_torch)
     check_val_and_grad(a, a_torch)
 
+
 def test_multiple_op():
     a = Tensor.normal(0, 1, (30, 30), requires_grad=True)
     b = Tensor.normal(0, 1, (30, 15), requires_grad=True)
@@ -437,7 +480,6 @@ def test_multiple_op():
     f = e.log()
     f_torch = e_torch.log()
 
-    print(f.shape)
     g = f[:, 3:]
     g_torch = f_torch[:, 3:]
 

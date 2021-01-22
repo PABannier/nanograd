@@ -8,6 +8,7 @@ from device import Device
 
 from tests.helpers import *
 
+
 def test_cross_entropy():
     num_classes = 10
     batch_size = 64
@@ -28,7 +29,7 @@ def test_cross_entropy():
     check_val_and_grad(predicted, pred_torch)
     check_val_and_grad(target, target_torch)
 
-"""
+
 def test_cross_entropy_gpu():
     num_classes = 10
     batch_size = 64
@@ -55,4 +56,3 @@ def test_cross_entropy_gpu():
     check_val_and_grad(loss, loss_torch)
     check_val_and_grad(predicted, pred_torch)
     check_val_and_grad(target, target_torch)
-"""

@@ -171,7 +171,7 @@ class Tensor:
             return cpu_data
         
         if not isinstance(data, np.ndarray):
-            data = np.array(data)
+            data = np.array(data).astype(np.float32)
 
         if device == Device.GPU:
             if cl_ctx is None:
@@ -267,19 +267,32 @@ class Tensor:
     # ****************************************
         
     def __add__(self, other):
+        if isinstance(other, (int, float)):
+            other = Tensor(other)
         return F.Add.apply(self, other, cl_ctx=cl_ctx, cl_queue=cl_queue)
+
+    def __radd__(self, other):
+        return self + other
     
     def __neg__(self):
         return F.Neg.apply(self, cl_ctx=cl_ctx, cl_queue=cl_queue)
     
     def __sub__(self, other):
         return self + (- other)
+    
+    def __rsub__(self, other):
+        return -self + other
 
     def __pow__(self, exp):
         return F.Pow.apply(self, exp, cl_ctx=cl_ctx, cl_queue=cl_queue)
     
     def __mul__(self, other):
+        if isinstance(other, (int, float)):
+            other = Tensor(other)
         return F.Mul.apply(self, other, cl_ctx=cl_ctx, cl_queue=cl_queue)
+    
+    def __rmul__(self, other):
+        return self * other
     
     def __truediv__(self, other):
         return self * (other ** (-1.0))
@@ -297,7 +310,7 @@ class Tensor:
     def mean(self, axis=None, keepdims:bool=False):
         out = self.sum(axis=axis)
         coeff = np.prod(out.shape) / np.prod(self.shape)
-        return out * Tensor(coeff)
+        return out * Tensor(coeff, device=self.device)
     
     def reshape(self, shape:tuple):
         return F.Reshape.apply(self, shape, cl_ctx=cl_ctx, cl_queue=cl_queue)
@@ -319,6 +332,9 @@ class Tensor:
 
     def sqrt(self):
         return self ** (1/2)
+    
+    def one_hot(self, num_classes):
+        return F.OneHot.apply(self, num_classes, cl_ctx=cl_ctx, cl_queue=cl_queue)
 
     # ****************************************
     # ******** Activation functions **********

@@ -243,7 +243,7 @@ def matmul_op(ctx, queue, a, b):
                 np.int32(1), msize, np.int32(1), osize, osize)
     return ret
 
-def one_hot_encoding_op(ctx, queue, a, num_classes):
+def one_hot_encoding(ctx, queue, a, num_classes):
     ret = GPUBuffer(ctx, (a.shape[0], num_classes))
     n_rows, n_cols = np.int32(a.shape[0]), np.int32(num_classes)
     prgm = cl.Program(ctx, """
@@ -264,6 +264,11 @@ def one_hot_encoding_op(ctx, queue, a, num_classes):
 # *********** Forward passes **********
 # *************************************
 
+def unsqueeze_forward(ctx, queue, a, axis):
+    in_shape = np.array(a.shape)
+    in_shape = np.insert(in_shape, axis, 1)
+    return GPUBuffer(ctx, in_shape, hostbuf=a.data)
+    
 def add_forward(ctx, queue, a, b):
     return element_wise_binary_op(ctx, queue, 'a+b', a, b)
 
@@ -328,6 +333,11 @@ def conv2d_forward(ctx, queue, a, weight, bias, stride, pad):
 # *************************************
 # ********** Backward passes **********
 # *************************************
+
+def unsqueeze_backward(ctx, queue, grad_output, axis):
+    in_shape = np.array(grad_output.shape)
+    in_shape = np.delete(in_shape, axis)
+    return GPUBuffer(ctx, in_shape, hostbuf=grad_output.data)
 
 def add_backward(ctx, queue, grad_output, a_shape, b_shape):
     return unbroadcast(ctx, queue, grad_output, a_shape), unbroadcast(ctx, queue, grad_output, b_shape) 

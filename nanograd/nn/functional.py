@@ -22,12 +22,10 @@ def cross_entropy(predicted:Tensor, target:Tensor) -> Tensor:
             Tensor: the loss as a float, in a tensor of shape ()
     """
     batch_size, num_classes = predicted.shape
-
     labels = target.one_hot(num_classes)
 
     a = predicted.max(axis=1).reshape((batch_size, 1))
     log_softmax = predicted - a - (predicted - a).exp().sum(axis=1).log().reshape((batch_size, 1))
-
     nll_loss = - (log_softmax * labels).sum() / batch_size
 
     return nll_loss
@@ -43,18 +41,49 @@ class OneHot(Function):
         is_leaf = not a.requires_grad
 
         if a.device == Device.CPU:
-            out = ops_cpu.one_hot_encoding_op(a.data,  num_classes)
+            out = ops_cpu.one_hot_encoding(a.data, num_classes)
         else:
-            out = ops_gpu.one_hot_encoding_op(ctx.cl_ctx, ctx.cl_queue, a.data, num_classes)
+            out = ops_gpu.one_hot_encoding(ctx.cl_ctx, ctx.cl_queue, a.data, num_classes)
         
         return Tensor(out, device=a.device, requires_grad=requires_grad,
-                        is_leaf=is_leaf)
+                      is_leaf=is_leaf)
     
     @staticmethod
     def backward(ctx, grad_output):
         # No backward pass since one-hot encoding is applied to a target
         # tensor whose gradient is None
         return None
+
+
+class Unsqueeze(Function):
+    @staticmethod
+    def forward(ctx, a, axis):
+        if not type(a).__name__ == "Tensor":
+            raise Exception("Arg for Unsqueeze must be tensor: {}".format(type(a).__name__))
+
+        requires_grad = a.requires_grad
+        is_leaf = not a.requires_grad
+
+        ctx.axis = axis
+
+        if a.device == Device.CPU:
+            out = ops_cpu.unsqueeze_forward(a.data, axis)
+        else:
+            out = ops_gpu.unsqueeze_forward(ctx.cl_ctx, ctx.cl_queue, a, axis)
+
+        return Tensor(out, device=a.device, requires_grad=requires_grad,
+                      is_leaf=is_leaf)
+    
+    @staticmethod
+    def backward(ctx, grad_output):
+        axis = ctx.axis
+
+        if grad_output.device == Device.CPU:
+            grad = ops_cpu.unsqueeze_backward(grad_output.data, axis)
+        else:
+            grad = ops_gpu.unsqueeze_backward(ctx.cl_ctx, ctx.cl_queue, grad_output, axis)
+        
+        return Tensor(grad, device=grad_output.device), None
 
 
 class Slice(Function):
@@ -67,8 +96,6 @@ class Slice(Function):
 
         requires_grad = a.requires_grad
         is_leaf = not a.requires_grad
-
-        print(a.device)
 
         if a.device == Device.CPU:
             out_data = ops_cpu.slice_forward(a.data, indices)
@@ -109,7 +136,7 @@ class Transpose(Function):
             out_data = ops_gpu.transpose_forward(ctx.cl_ctx, ctx.cl_queue, a.data)
 
         out = Tensor(out_data, requires_grad=requires_grad, 
-                            is_leaf=is_leaf, device=a.device)
+                     is_leaf=is_leaf, device=a.device)
         out.children = [a]
         out.op = 'transpose'
         return out
@@ -141,7 +168,7 @@ class Reshape(Function):
             out_data = ops_gpu.reshape_forward(ctx.cl_ctx, ctx.cl_queue, a, shape)
         
         out = Tensor(out_data, requires_grad=requires_grad, 
-                            is_leaf=is_leaf, device=a.device)
+                     is_leaf=is_leaf, device=a.device)
             
         out.children = [a]
         out.op = 'reshape'
@@ -174,12 +201,13 @@ class Max(Function):
         if a.device == Device.CPU:
             out_data = ops_cpu.max_forward(a.data, axis, keepdims)
         else:
-            out_data = ops_gpu.max_forward(ctx.cl_ctx, ctx.cl_queue, a.data, axis, keepdims)
+            out_data = ops_gpu.max_forward(ctx.cl_ctx, ctx.cl_queue, 
+                                           a.data, axis, keepdims)
         
         ctx.axis, ctx.out = axis, out_data
 
         out = Tensor(out_data, requires_grad=requires_grad, 
-                            is_leaf=is_leaf, device=a.device)
+                     is_leaf=is_leaf, device=a.device)
         out.children = [a]
         out.op = 'max'
 
@@ -220,7 +248,7 @@ class Min(Function):
         ctx.axis, ctx.out = axis, out_data
 
         out = Tensor(out_data, requires_grad=requires_grad, 
-                            is_leaf=is_leaf, device=a.device)
+                     is_leaf=is_leaf, device=a.device)
         out.children = [a]
         out.op = 'min'
 

@@ -16,31 +16,31 @@ SEED = 42
 
 def test_linear_forward():
     np.random.seed(SEED)
-    model = nnn.Sequential(nnn.Linear(10, 20, with_bias=False))
+    model = nnn.Sequential(nnn.Linear(10, 20))
     forward_test(model, test_on_gpu=True)
     check_model_param_settings(model)
 
 def test_linear_backward():
     np.random.seed(SEED)
-    model = nnn.Sequential(nnn.Linear(10, 20, with_bias=False))
-    forward_backward_test(model)
+    model = nnn.Sequential(nnn.Linear(10, 20))
+    forward_backward_test(model, test_on_gpu=True)
 
 def test_relu_forward():
     np.random.seed(SEED)
-    model = nnn.Sequential(nnn.Linear(10, 20, with_bias=False), nnn.ReLU())
+    model = nnn.Sequential(nnn.Linear(10, 20), nnn.ReLU())
     forward_test(model, test_on_gpu=True)
     check_model_param_settings(model)
 
 def test_relu_backward():
     np.random.seed(SEED)
-    model = nnn.Sequential(nnn.Linear(10, 20, with_bias=False), nnn.ReLU())
-    forward_backward_test(model)
+    model = nnn.Sequential(nnn.Linear(10, 20), nnn.ReLU())
+    forward_backward_test(model, test_on_gpu=True)
 
 def test_multiple_layer_forward():
     np.random.seed(SEED)
     model = nnn.Sequential(
-        nnn.Linear(10, 20, with_bias=False), nnn.ReLU(), 
-        nnn.Linear(20, 40, with_bias=False), nnn.ReLU()
+        nnn.Linear(10, 20), nnn.ReLU(), 
+        nnn.Linear(20, 40), nnn.ReLU()
     )
     forward_test(model, test_on_gpu=True)
     check_model_param_settings(model)
@@ -48,8 +48,8 @@ def test_multiple_layer_forward():
 def test_multiple_layer_backward():
     np.random.seed(SEED)
     model = nnn.Sequential(
-        nnn.Linear(10, 20, with_bias=False), nnn.ReLU(), 
-        nnn.Linear(20, 40, with_bias=False), nnn.ReLU())
+        nnn.Linear(10, 20), nnn.ReLU(), 
+        nnn.Linear(20, 40), nnn.ReLU())
     forward_backward_test(model, test_on_gpu=True)
 
 def test_flatten_forward():
@@ -76,14 +76,14 @@ def test_flatten_forward():
 
 def test_batchnorm1d_forward():
     np.random.seed(SEED)
-    model = nnn.Sequential(nnn.Linear(10, 20, with_bias=False), nnn.BatchNorm1d(20), nnn.ReLU())
+    model = nnn.Sequential(nnn.Linear(10, 20), nnn.BatchNorm1d(20), nnn.ReLU())
     forward_test(model, test_on_gpu=True)
     check_model_param_settings(model)
 
 
 def test_batchnorm1d_backward():
     np.random.seed(SEED)
-    model = nnn.Sequential(nnn.Linear(10, 20, with_bias=False), nnn.BatchNorm1d(20), nnn.ReLU())
+    model = nnn.Sequential(nnn.Linear(10, 20), nnn.BatchNorm1d(20), nnn.ReLU())
     forward_backward_test(model, test_on_gpu=True)
 
 """
@@ -112,29 +112,29 @@ def test_batchnorm2d_backward():
 
 def test_linear_relu_step():
     np.random.seed(SEED)
-    model = nnn.Sequential(nnn.Linear(10, 20, with_bias=False), nnn.ReLU())
+    model = nnn.Sequential(nnn.Linear(10, 20), nnn.ReLU())
     optimizer = SGD(model.parameters())
     step_test(model, optimizer, 5, 5)
 
 
 def test_multiple_layer_relu_step():
     np.random.seed(SEED)
-    model = nnn.Sequential(nnn.Linear(10, 20, with_bias=False), nnn.ReLU(), 
-                           nnn.Linear(20, 30, with_bias=False), nnn.ReLU())
+    model = nnn.Sequential(nnn.Linear(10, 20), nnn.ReLU(), 
+                           nnn.Linear(20, 30), nnn.ReLU())
     optimizer = SGD(model.parameters())
     step_test(model, optimizer, 5, 5)
 
 
 def test_linear_batchnorm_relu_train_eval():
     np.random.seed(SEED)
-    model = nnn.Sequential(nnn.Linear(10, 20, with_bias=False), nnn.BatchNorm1d(20), nnn.ReLU())
+    model = nnn.Sequential(nnn.Linear(10, 20), nnn.BatchNorm1d(20), nnn.ReLU())
     optimizer = SGD(model.parameters())
     step_test(model, optimizer, 5, 5)
 
 
 def test_big_linear_batchnorm_relu_train_eval():
     np.random.seed(SEED)
-    model = nnn.Sequential(nnn.Linear(10, 20, with_bias=False), nnn.BatchNorm1d(20), nnn.ReLU())
+    model = nnn.Sequential(nnn.Linear(10, 20), nnn.BatchNorm1d(20), nnn.ReLU())
     optimizer = SGD(model.parameters())
     step_test(model, optimizer, 5, 5)
 
@@ -145,7 +145,7 @@ def test_big_linear_batchnorm_relu_train_eval():
 
 def test_linear_xeloss_forward():
     np.random.seed(SEED)
-    model = nnn.Sequential(nnn.Linear(10, 20, with_bias=False))
+    model = nnn.Sequential(nnn.Linear(10, 20))
     optimizer = SGD(model.parameters())
     criterion = CrossEntropyLoss()
     forward_test(model, criterion=criterion)
@@ -153,7 +153,7 @@ def test_linear_xeloss_forward():
 
 def test_linear_xeloss_backward():
     np.random.seed(SEED)
-    model = nnn.Sequential(nnn.Linear(10, 20, with_bias=False))
+    model = nnn.Sequential(nnn.Linear(10, 20))
     optimizer = SGD(model.parameters())
     criterion = CrossEntropyLoss()
     forward_backward_test(model, criterion=criterion)
@@ -161,8 +161,8 @@ def test_linear_xeloss_backward():
 
 def test_big_linear_bn_relu_xeloss_train_eval():
     np.random.seed(SEED)
-    model = nnn.Sequential(nnn.Linear(10, 20, with_bias=False), nnn.BatchNorm1d(20), nnn.ReLU(), 
-                           nnn.Linear(20, 30, with_bias=False), nnn.BatchNorm1d(30), nnn.ReLU())
+    model = nnn.Sequential(nnn.Linear(10, 20), nnn.BatchNorm1d(20), nnn.ReLU(), 
+                           nnn.Linear(20, 30), nnn.BatchNorm1d(30), nnn.ReLU())
     optimizer = SGD(model.parameters())
     criterion = CrossEntropyLoss()
     step_test(model, optimizer, 5, 5, criterion=criterion)
@@ -170,8 +170,8 @@ def test_big_linear_bn_relu_xeloss_train_eval():
 
 def test_big_linear_relu_xeloss_train_eval():
     np.random.seed(SEED)
-    model = nnn.Sequential(nnn.Linear(10, 20, with_bias=False), nnn.ReLU(), 
-                           nnn.Linear(20, 30, with_bias=False), nnn.ReLU())
+    model = nnn.Sequential(nnn.Linear(10, 20), nnn.ReLU(), 
+                           nnn.Linear(20, 30), nnn.ReLU())
     optimizer = SGD(model.parameters())
     criterion = CrossEntropyLoss()
     step_test(model, optimizer, 5, 5, criterion=criterion)
@@ -183,24 +183,24 @@ def test_big_linear_relu_xeloss_train_eval():
 
 def test_linear_momentum():
     np.random.seed(SEED)
-    model = nnn.Sequential(nnn.Linear(10, 20, with_bias=False), nnn.ReLU())
+    model = nnn.Sequential(nnn.Linear(10, 20), nnn.ReLU())
     optimizer = SGD(model.parameters(), momentum=0.9)
     step_test(model, optimizer, 5, 0)
 
 
 def test_big_linear_batchnorm_relu_xeloss_momentum():
     np.random.seed(SEED)
-    model = nnn.Sequential(nnn.Linear(10, 20, with_bias=False), nnn.BatchNorm1d(20), nnn.ReLU(),
-                           nnn.Linear(20, 30, with_bias=False), nnn.BatchNorm1d(30), nnn.ReLU())
+    model = nnn.Sequential(nnn.Linear(10, 20), nnn.BatchNorm1d(20), nnn.ReLU(),
+                           nnn.Linear(20, 30), nnn.BatchNorm1d(30), nnn.ReLU())
     optimizer = SGD(model.parameters(), momentum=0.9)
     criterion = CrossEntropyLoss()
     step_test(model, optimizer, 5, 5, criterion=criterion)
 
 
-def test_big_linear_relu_xeloss_momentum():  # PWNED
+def test_big_linear_relu_xeloss_momentum():
     np.random.seed(SEED)
-    model = nnn.Sequential(nnn.Linear(10, 20, with_bias=False), nnn.ReLU(),
-                           nnn.Linear(20, 30, with_bias=False), nnn.ReLU())
+    model = nnn.Sequential(nnn.Linear(10, 20), nnn.ReLU(),
+                           nnn.Linear(20, 30), nnn.ReLU())
     optimizer = SGD(model.parameters(), momentum = 0.9)
     criterion = CrossEntropyLoss()
     step_test(model, optimizer, 5, 5, criterion=criterion)

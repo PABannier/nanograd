@@ -476,6 +476,20 @@ def test_max():
     check_val_and_grad(b, b_torch)
 
 
+def test_unsqueeze():
+    a = Tensor.normal(0, 1, (30,), requires_grad=True)
+    a_torch = create_identical_torch_tensor(a)
+
+    b = a.unsqueeze(1)
+    b_torch = a_torch.unsqueeze(1)
+
+    b_torch.sum().backward()
+    b.backward()
+
+    check_val_and_grad(a, a_torch)
+    check_val_and_grad(b, b_torch)
+
+
 def test_multiple():
     a = Tensor.randn(2, 3, requires_grad=True)
     b = Tensor.randn(2, 3, requires_grad=True)

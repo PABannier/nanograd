@@ -332,9 +332,16 @@ class Tensor:
 
     def sqrt(self):
         return self ** (1/2)
+
+    # ****************************************
+    # ****** Miscellaneous operations ********
+    # ****************************************
     
     def one_hot(self, num_classes):
         return F.OneHot.apply(self, num_classes, cl_ctx=cl_ctx, cl_queue=cl_queue)
+
+    def unsqueeze(self, axis):
+        return F.Unsqueeze.apply(self, axis, cl_ctx=cl_ctx, cl_queue=cl_queue)
 
     # ****************************************
     # ******** Activation functions **********

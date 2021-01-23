@@ -31,7 +31,7 @@ def inner_slice(a, indices):
     slices = [(p[0]+padding[i][0], p[1]+padding[i][0]) for i, p in enumerate(indices)]
     return a[tuple([slice(x[0], x[1], None) for x in slices])]
 
-def one_hot_encoding_op(a, num_classes):
+def one_hot_encoding(a, num_classes):
     idx = a.astype(int)
     out = np.zeros((idx.shape[0], num_classes))
     out[np.arange(len(out)), idx] = 1
@@ -40,6 +40,9 @@ def one_hot_encoding_op(a, num_classes):
 # *************************************
 # *********** Forward passes **********
 # *************************************
+
+def unsqueeze_forward(a, axis):
+    return np.expand_dims(a, axis)
 
 def slice_forward(a, indices):
     return inner_slice(a, indices)
@@ -100,6 +103,9 @@ def tanh_forward(a):
 # *************************************
 # ********** Backward passes **********
 # *************************************
+
+def unsqueeze_backward(grad_output, axis):
+    return grad_output.squeeze(axis)
 
 def add_backward(grad_output, a_shape, b_shape):
     grad_a = np.ones(a_shape) * grad_output.data

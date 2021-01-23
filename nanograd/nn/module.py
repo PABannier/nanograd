@@ -226,7 +226,7 @@ class Linear(Module):
                 Tensor: (batch_size, out_features)
         """
         if self.with_bias:
-            out = x @ self.weight.T() + self.bias
+            out = x @ self.weight.T() + self.bias.unsqueeze(1).T()
         else:
             out = x @ self.weight.T()
            
@@ -250,8 +250,8 @@ class BatchNorm1d(Module):
         super().__init__()
         self.num_features = num_features
 
-        self.eps = Tensor(eps, is_parameter=False)
-        self.momentum = Tensor(momentum, is_parameter=False)
+        self.eps = Tensor([eps], is_parameter=False)
+        self.momentum = Tensor([momentum], is_parameter=False)
 
         self.gamma = Tensor.ones((self.num_features, ), 
                                     requires_grad=True, is_parameter=True, name="bn_gamma")
@@ -271,8 +271,8 @@ class BatchNorm1d(Module):
                 Tensor: (batch_size, num_features)
         """
         if self.is_train == True:
-            batch_mean = x.mean(0)
-            batch_var = ((x - batch_mean) ** 2).mean(0)
+            batch_mean = x.mean(0).unsqueeze(1).T()
+            batch_var = ((x - batch_mean) ** 2).mean(0).unsqueeze(1).T()
             batch_empirical_var = ((x - batch_mean) ** 2).sum(0) / (x.shape[0] - 1)
 
             self.running_mean = (1 - self.momentum) * self.running_mean + self.momentum * batch_mean
@@ -284,7 +284,7 @@ class BatchNorm1d(Module):
         
     def _normalize(self, x, mean, var):
         x_hat = (x - mean) / (var + self.eps).sqrt()
-        out = self.gamma * x_hat + self.beta
+        out = self.gamma.unsqueeze(1).T() * x_hat + self.beta.unsqueeze(1).T()
         out.name = "bn_1d_res"
         return out
 

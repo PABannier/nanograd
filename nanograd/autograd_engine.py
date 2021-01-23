@@ -1,4 +1,4 @@
-import tensor
+from nanograd import tensor
 
 def backward(grad_fn, grad_of_outputs):
     r"""

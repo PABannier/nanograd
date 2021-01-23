@@ -4,12 +4,12 @@ import torch
 import torch.nn as nn
 from torch.autograd import Variable
 
-from tensor import Tensor
+from nanograd.tensor import Tensor
 import nanograd.nn.module as nnn
 from nanograd.optim.optimizer import SGD
 
 from nanograd.nn.module import CrossEntropyLoss
-from device import Device
+from nanograd.device import Device
 
 
 def check_val(nano_tensor, torch_tensor, atol=1e-5):

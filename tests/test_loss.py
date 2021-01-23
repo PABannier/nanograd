@@ -1,10 +1,10 @@
-from tensor import Tensor
-from autograd_engine import *
-from nn.functional import *
+from nanograd.tensor import Tensor
+from nanograd.autograd_engine import *
+from nanograd.nn.functional import *
+from nanograd.device import Device
 
 import torch
 import numpy as np
-from device import Device
 
 from tests.helpers import *
 

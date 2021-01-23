@@ -1,5 +1,5 @@
 import numpy as np
-from tensor import Tensor
+from nanograd.tensor import Tensor
 
 
 class Optimizer:

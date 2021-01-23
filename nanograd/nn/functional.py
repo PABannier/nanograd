@@ -1,11 +1,11 @@
 import numpy as np
-import tensor
-from autograd_engine import Function
-from nn.conv_ops import (get_conv1d_output_size, get_conv2d_output_size, 
-                         get_im2col_indices, col2im)
-import nn.ops_cpu as ops_cpu
-import nn.ops_gpu as ops_gpu
-from device import Device
+from nanograd import tensor
+from nanograd.autograd_engine import Function
+from nanograd.nn.conv_ops import (get_conv1d_output_size, get_conv2d_output_size, 
+                                  get_im2col_indices, col2im)
+import nanograd.nn.ops_cpu as ops_cpu
+import nanograd.nn.ops_gpu as ops_gpu
+from nanograd.device import Device
 
 
 def cross_entropy(predicted, target):

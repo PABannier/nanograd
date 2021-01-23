@@ -1,5 +1,6 @@
 from enum import Enum
 
+
 class Device(Enum):
     r"""
         Enumeration of the devices supported by

@@ -1,6 +1,6 @@
-from tensor import Tensor
-from device import Device
-import nn.functional as F
+from nanograd.tensor import Tensor
+from nanograd.device import Device
+import nanograd.nn.functional as F
 
 import numpy as np
 

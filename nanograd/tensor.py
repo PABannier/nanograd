@@ -2,12 +2,12 @@ from typing import Union
 import warnings
 
 import numpy as np
-from viz.comp_graph import ForwardGraphVisualizer, BackwardGraphVisualizer
+from nanograd.viz.comp_graph import ForwardGraphVisualizer, BackwardGraphVisualizer
 
-from device import Device
-import autograd_engine
-from nn import functional as F
-from nn.ops_gpu import GPUBuffer
+from nanograd.device import Device
+from nanograd import autograd_engine
+from nanograd.nn import functional as F
+from nanograd.nn.ops_gpu import GPUBuffer
 
 
 try:

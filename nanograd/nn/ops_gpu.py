@@ -245,17 +245,18 @@ def matmul_op(ctx, queue, a, b):
 
 def one_hot_encoding_op(ctx, queue, a, num_classes):
     ret = GPUBuffer(ctx, (a.shape[0], num_classes))
-    size = np.int32(a.shape[0])
+    n_rows, n_cols = np.int32(a.shape[0]), np.int32(num_classes)
     prgm = cl.Program(ctx, """
-        __kernel void one_hot(__global const float *labels, __global float *res, int size) {
+        __kernel void one_hot(__global const float *labels, __global float *res, 
+                              const int n_cols) {
             int gid0 = get_global_id(0);
 
             int label = labels[gid0];
-            res[gid0 + size * label] = 1;
+            res[gid0 * n_cols + label] = 1;
         }
     """).build()
 
-    prgm.one_hot(queue, [size], None, a.cl, ret.cl, size)
+    prgm.one_hot(queue, [n_rows, n_cols], None, a.cl, ret.cl, n_cols)
     return ret
 
 

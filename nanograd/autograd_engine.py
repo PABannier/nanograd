@@ -1,4 +1,7 @@
 from nanograd import tensor
+from nanograd.nn import ops_gpu
+from nanograd.device import Device
+
 
 def backward(grad_fn, grad_of_outputs):
     r"""
@@ -49,6 +52,8 @@ class Function:
         # Creates BackwardFunction obj representing the current node
         backward_function = BackwardFunction(cls)
 
+        cl_ctx, cl_queue = None, None
+
         # Gets OpenCL objects
         try:
             cl_ctx, cl_queue = kwargs['cl_ctx'], kwargs['cl_queue']
@@ -65,7 +70,7 @@ class Function:
             if isinstance(arg, tensor.Tensor):
                 if not arg.grad_fn:
                     if arg.requires_grad and arg.is_leaf:
-                        arg.grad_fn = AccumulateGrad(arg)
+                        arg.grad_fn = AccumulateGrad(arg, cl_ctx, cl_queue)
                     elif arg.requires_grad and not arg.is_leaf:
                         arg.grad_fn = BackwardFunction(cls)
                     elif not arg.requires_grad and arg.is_leaf:
@@ -90,10 +95,12 @@ class AccumulateGrad:
         Args:
             tensor (Tensor): The tensor where the gradients are accumulated in `.grad`
     """
-    def __init__(self, tensor):
+    def __init__(self, tensor, cl_ctx=None, cl_queue=None):
         self.variable = tensor
         self.next_functions = [] 
         self.function_name = "AccumulateGrad"
+
+        self.cl_ctx, self.cl_queue = cl_ctx, cl_queue
 
     def apply(self, arg):
         r"""
@@ -102,16 +109,15 @@ class AccumulateGrad:
             Args:
                 arg (Tensor): Gradient to accumulate
         """
-        # if no grad stored yet, initialize. otherwise +=
         if self.variable.grad is None:
-            self.variable.grad = tensor.Tensor(arg.data)
+            self.variable.grad = tensor.Tensor(arg.data, device=self.variable.device)
         else:
-            self.variable.grad.data += arg.data
+            if self.variable.device == Device.GPU:
+                self.variable.grad.data = ops_gpu.element_wise_binary_op(
+                    self.cl_ctx, self.cl_queue, 'a+b', arg.data, self.variable.grad.data)
+            else:
+                self.variable.grad.data += arg.data
 
-        # Some tests to make sure valid grads were stored.
-        shape = self.variable.shape
-        grad_shape = self.variable.grad.shape
-        #assert shape == grad_shape, (shape, grad_shape)
 
 class ContextManager:
     r"""

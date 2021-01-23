@@ -48,9 +48,6 @@ def test_cross_entropy_gpu():
     loss_torch.sum().backward()
     loss.backward()
 
-    print(loss.device)
-    assert loss.device == Device.GPU
-
     loss.cpu(), predicted.cpu(), target.cpu()
 
     check_val_and_grad(loss, loss_torch)

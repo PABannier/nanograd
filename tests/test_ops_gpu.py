@@ -206,6 +206,34 @@ def test_div():
     check_val_and_grad(a, a_torch)
 
 
+def test_div_broadcast():
+    a = Tensor.normal(30, 2, (3, 3, 3), requires_grad=True)
+    b = Tensor.normal(30, 2, (3, 3, 3), requires_grad=True)
+    a_torch, b_torch = create_identical_torch_tensor(a, b)
+
+    a.gpu(), b.gpu()
+
+    c = a / 16
+    c_torch = a_torch / 16
+
+    d = b * 4
+    d_torch = b_torch * 4
+
+    e = c.sum() / d.sum() 
+    e_torch = c_torch.sum() / d_torch.sum()
+
+    e.backward()
+    e_torch.sum().backward()
+
+    e.cpu(), d.cpu(), c.cpu(), b.cpu(), a.cpu()
+
+    check_val_and_grad(a, a_torch)
+    check_val_and_grad(b, b_torch)
+    check_val_and_grad(c, c_torch)
+    check_val_and_grad(d, d_torch)
+    check_val_and_grad(e, e_torch)
+
+
 def test_relu():
     a = Tensor.normal(0, 2, (8, 3, 10, 10), requires_grad=True)
     a_torch = create_identical_torch_tensor(a)

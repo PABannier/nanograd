@@ -31,6 +31,12 @@ def inner_slice(a, indices):
     slices = [(p[0]+padding[i][0], p[1]+padding[i][0]) for i, p in enumerate(indices)]
     return a[tuple([slice(x[0], x[1], None) for x in slices])]
 
+def one_hot_encoding_op(a, num_classes):
+    idx = a.astype(int)
+    out = np.zeros((idx.shape[0], num_classes))
+    out[np.arange(len(out)), idx] = 1
+    return out
+
 # *************************************
 # *********** Forward passes **********
 # *************************************

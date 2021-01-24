@@ -264,10 +264,15 @@ def one_hot_encoding(ctx, queue, a, num_classes):
 # *********** Forward passes **********
 # *************************************
 
+def squeeze_forward(ctx, queue, a, axis):
+    in_shape = np.array(a.shape)
+    out_shape = np.delete(in_shape, axis).astype(np.int32)
+    return GPUBuffer(ctx, out_shape, hostbuf=a.data)
+
 def unsqueeze_forward(ctx, queue, a, axis):
     in_shape = np.array(a.shape)
-    in_shape = np.insert(in_shape, axis, 1)
-    return GPUBuffer(ctx, in_shape, hostbuf=a.data)
+    out_shape = np.insert(in_shape, axis, 1).astype(np.int32)
+    return GPUBuffer(ctx, out_shape, hostbuf=a.data)
     
 def add_forward(ctx, queue, a, b):
     return element_wise_binary_op(ctx, queue, 'a+b', a, b)
@@ -334,10 +339,15 @@ def conv2d_forward(ctx, queue, a, weight, bias, stride, pad):
 # ********** Backward passes **********
 # *************************************
 
+def squeeze_backward(ctx, queue, grad_output, axis):
+    in_shape = np.array(grad_output.shape)
+    out_shape = np.insert(in_shape, axis, 1).astype(np.int32)
+    return GPUBuffer(ctx, out_shape, hostbuf=grad_output.data)
+
 def unsqueeze_backward(ctx, queue, grad_output, axis):
     in_shape = np.array(grad_output.shape)
-    in_shape = np.delete(in_shape, axis)
-    return GPUBuffer(ctx, in_shape, hostbuf=grad_output.data)
+    out_shape = np.delete(in_shape, axis).astype(np.int32)
+    return GPUBuffer(ctx, out_shape, hostbuf=grad_output.data)
 
 def add_backward(ctx, queue, grad_output, a_shape, b_shape):
     return unbroadcast(ctx, queue, grad_output, a_shape), unbroadcast(ctx, queue, grad_output, b_shape) 

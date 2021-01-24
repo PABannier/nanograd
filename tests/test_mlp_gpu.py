@@ -89,12 +89,15 @@ def test_batchnorm1d_backward():
 """
 def test_batchnorm2d_backward():
     np.random.seed(SEED)
-    model = nnn.Sequential(nnn.Conv2d(3, 10, 3, 1), nnn.BatchNorm2d(10), nnn.ReLU())
+    model = nnn.Sequential(nnn.Linear(10, 20), nnn.BatchNorm2d(10), nnn.ReLU())
     pytorch_model = get_same_pytorch_mlp(model)
 
-    shape = (16, 3, 20, 20)
+    shape = (16, 10, 10)
     x = Tensor.normal(0, 1, shape)
     x_torch = create_identical_torch_tensor(x).double()
+
+    x.gpu()
+    model.gpu()
 
     y = model(x)
     y_torch = pytorch_model(x_torch)
@@ -102,10 +105,11 @@ def test_batchnorm2d_backward():
     y.backward()
     y_torch.sum().backward()
 
+    x.cpu(), y.cpu()
+
     check_val_and_grad(y, y_torch)
     check_val_and_grad(x, x_torch)
 """
-
 
 # ****** SGD tests ******
 
@@ -114,7 +118,7 @@ def test_linear_relu_step():
     np.random.seed(SEED)
     model = nnn.Sequential(nnn.Linear(10, 20), nnn.ReLU())
     optimizer = SGD(model.parameters())
-    step_test(model, optimizer, 5, 5)
+    step_test(model, optimizer, 5, 5, test_on_gpu=True)
 
 
 def test_multiple_layer_relu_step():
@@ -122,21 +126,21 @@ def test_multiple_layer_relu_step():
     model = nnn.Sequential(nnn.Linear(10, 20), nnn.ReLU(), 
                            nnn.Linear(20, 30), nnn.ReLU())
     optimizer = SGD(model.parameters())
-    step_test(model, optimizer, 5, 5)
+    step_test(model, optimizer, 5, 5, test_on_gpu=True)
 
 
 def test_linear_batchnorm_relu_train_eval():
     np.random.seed(SEED)
     model = nnn.Sequential(nnn.Linear(10, 20), nnn.BatchNorm1d(20), nnn.ReLU())
     optimizer = SGD(model.parameters())
-    step_test(model, optimizer, 5, 5)
+    step_test(model, optimizer, 5, 5, test_on_gpu=True)
 
 
 def test_big_linear_batchnorm_relu_train_eval():
     np.random.seed(SEED)
     model = nnn.Sequential(nnn.Linear(10, 20), nnn.BatchNorm1d(20), nnn.ReLU())
     optimizer = SGD(model.parameters())
-    step_test(model, optimizer, 5, 5)
+    step_test(model, optimizer, 5, 5, test_on_gpu=True)
 
 
 
@@ -148,7 +152,7 @@ def test_linear_xeloss_forward():
     model = nnn.Sequential(nnn.Linear(10, 20))
     optimizer = SGD(model.parameters())
     criterion = CrossEntropyLoss()
-    forward_test(model, criterion=criterion)
+    forward_test(model, criterion=criterion, test_on_gpu=True)
 
 
 def test_linear_xeloss_backward():
@@ -156,7 +160,7 @@ def test_linear_xeloss_backward():
     model = nnn.Sequential(nnn.Linear(10, 20))
     optimizer = SGD(model.parameters())
     criterion = CrossEntropyLoss()
-    forward_backward_test(model, criterion=criterion)
+    forward_backward_test(model, criterion=criterion, test_on_gpu=True)
 
 
 def test_big_linear_bn_relu_xeloss_train_eval():
@@ -165,7 +169,7 @@ def test_big_linear_bn_relu_xeloss_train_eval():
                            nnn.Linear(20, 30), nnn.BatchNorm1d(30), nnn.ReLU())
     optimizer = SGD(model.parameters())
     criterion = CrossEntropyLoss()
-    step_test(model, optimizer, 5, 5, criterion=criterion)
+    step_test(model, optimizer, 5, 5, criterion=criterion, test_on_gpu=True)
 
 
 def test_big_linear_relu_xeloss_train_eval():
@@ -174,7 +178,7 @@ def test_big_linear_relu_xeloss_train_eval():
                            nnn.Linear(20, 30), nnn.ReLU())
     optimizer = SGD(model.parameters())
     criterion = CrossEntropyLoss()
-    step_test(model, optimizer, 5, 5, criterion=criterion)
+    step_test(model, optimizer, 5, 5, criterion=criterion, test_on_gpu=True)
 
 
 
@@ -185,7 +189,7 @@ def test_linear_momentum():
     np.random.seed(SEED)
     model = nnn.Sequential(nnn.Linear(10, 20), nnn.ReLU())
     optimizer = SGD(model.parameters(), momentum=0.9)
-    step_test(model, optimizer, 5, 0)
+    step_test(model, optimizer, 5, 0, test_on_gpu=True)
 
 
 def test_big_linear_batchnorm_relu_xeloss_momentum():
@@ -194,7 +198,7 @@ def test_big_linear_batchnorm_relu_xeloss_momentum():
                            nnn.Linear(20, 30), nnn.BatchNorm1d(30), nnn.ReLU())
     optimizer = SGD(model.parameters(), momentum=0.9)
     criterion = CrossEntropyLoss()
-    step_test(model, optimizer, 5, 5, criterion=criterion)
+    step_test(model, optimizer, 5, 5, criterion=criterion, test_on_gpu=True)
 
 
 def test_big_linear_relu_xeloss_momentum():
@@ -203,4 +207,4 @@ def test_big_linear_relu_xeloss_momentum():
                            nnn.Linear(20, 30), nnn.ReLU())
     optimizer = SGD(model.parameters(), momentum = 0.9)
     criterion = CrossEntropyLoss()
-    step_test(model, optimizer, 5, 5, criterion=criterion)
+    step_test(model, optimizer, 5, 5, criterion=criterion, test_on_gpu=True)

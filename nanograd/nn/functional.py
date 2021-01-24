@@ -86,6 +86,47 @@ class Unsqueeze(Function):
         return Tensor(grad, device=grad_output.device), None
 
 
+class Squeeze(Function):
+    @staticmethod
+    def forward(ctx, a, axis):
+        if not type(a).__name__ == "Tensor":
+            raise Exception("Arg for Squeeze must be tensor: {}".format(type(a).__name__))
+
+        is_squeezed = False
+        requires_grad = a.requires_grad
+        is_leaf = not a.requires_grad
+
+        if a.shape[axis] == 1: # If dimension > 1, can't squeeze
+            is_squeezed = True
+            if a.device == Device.CPU:
+                out = ops_cpu.squeeze_forward(a.data, axis)
+            else:
+                out = ops_gpu.squeeze_forward(ctx.cl_ctx, ctx.cl_queue, a, axis)
+        else:
+            is_squeezed = False
+            out = a.data
+
+        ctx.axis = axis
+        ctx.is_squeezed = is_squeezed
+        
+        return Tensor(out, device=a.device, requires_grad=requires_grad,
+                      is_leaf=is_leaf)
+    
+    @staticmethod
+    def backward(ctx, grad_output):
+        axis, is_squeezed = ctx.axis, ctx.is_squeezed
+
+        if is_squeezed:
+            if grad_output.device == Device.CPU:
+                grad = ops_cpu.squeeze_backward(grad_output.data, axis)
+            else:
+                grad = ops_gpu.squeeze_backward(ctx.cl_ctx, ctx.cl_queue, grad_output, axis)
+        else:
+            grad = grad_output.data
+        
+        return Tensor(grad, device=grad_output.device), None
+
+
 class Slice(Function):
     @staticmethod
     def forward(ctx, a, indices=None):

@@ -225,7 +225,8 @@ class Tensor:
     
     def __str__(self):
         return f"<NanoTensor({str(self.data)}, " + \
-               f"grad_fn={self.grad_fn.__class__.__name__  if self.grad_fn else None})>"
+               f"grad_fn={self.grad_fn.__class__.__name__  if self.grad_fn else None}), " + \
+               f"name={self.name}>"
     
     def __repr__(self):
         return self.__str__()
@@ -342,6 +343,9 @@ class Tensor:
 
     def unsqueeze(self, axis):
         return F.Unsqueeze.apply(self, axis, cl_ctx=cl_ctx, cl_queue=cl_queue)
+    
+    def squeeze(self, axis):
+        return F.Squeeze.apply(self, axis, cl_ctx=cl_ctx, cl_queue=cl_queue)
 
     # ****************************************
     # ******** Activation functions **********

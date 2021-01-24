@@ -44,6 +44,9 @@ def one_hot_encoding(a, num_classes):
 def unsqueeze_forward(a, axis):
     return np.expand_dims(a, axis)
 
+def squeeze_forward(a, axis):
+    return np.squeeze(a, axis)
+
 def slice_forward(a, indices):
     return inner_slice(a, indices)
 
@@ -106,6 +109,9 @@ def tanh_forward(a):
 
 def unsqueeze_backward(grad_output, axis):
     return grad_output.squeeze(axis)
+
+def squeeze_backward(grad_output, axis):
+    return np.expand_dims(grad_output, axis)
 
 def add_backward(grad_output, a_shape, b_shape):
     grad_a = np.ones(a_shape) * grad_output.data

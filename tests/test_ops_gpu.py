@@ -487,6 +487,60 @@ def test_unsqueeze():
     check_val_and_grad(b, b_torch)
 
 
+def test_squeeze():
+    a = Tensor.normal(0, 1, (30, 1), requires_grad=True)
+    a_torch = create_identical_torch_tensor(a)
+
+    a.gpu()
+
+    b = a.squeeze(1)
+    b_torch = a_torch.squeeze(1)
+
+    b_torch.sum().backward()
+    b.backward()
+
+    b.cpu(), a.cpu()
+
+    check_val_and_grad(a, a_torch)
+    check_val_and_grad(b, b_torch)
+
+
+def test_squeeze_no_squeeze():
+    a = Tensor.normal(0, 1, (30, 30, 30), requires_grad=True)
+    a_torch = create_identical_torch_tensor(a)
+
+    a.gpu()
+
+    b = a.squeeze(1)
+    b_torch = a_torch.squeeze(1)
+
+    b_torch.sum().backward()
+    b.backward()
+
+    b.cpu(), a.cpu()
+
+    check_val_and_grad(a, a_torch)
+    check_val_and_grad(b, b_torch)
+
+
+def test_squeeze_scalar():
+    a = Tensor.normal(0, 1, (1, ), requires_grad=True)
+    a_torch = create_identical_torch_tensor(a)
+
+    a.gpu()
+
+    b = a.squeeze(0)
+    b_torch = a_torch.squeeze(0)
+
+    b_torch.sum().backward()
+    b.backward()
+
+    b.cpu(), a.cpu()
+
+    check_val_and_grad(a, a_torch)
+    check_val_and_grad(b, b_torch)
+
+
 def test_matmul():
     a = Tensor.normal(0, 1, (30, 15), requires_grad=True)
     b = Tensor.normal(0, 1, (15, 30), requires_grad=True)

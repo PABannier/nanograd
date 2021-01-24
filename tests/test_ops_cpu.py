@@ -490,6 +490,48 @@ def test_unsqueeze():
     check_val_and_grad(b, b_torch)
 
 
+def test_squeeze():
+    a = Tensor.normal(0, 1, (30, 1), requires_grad=True)
+    a_torch = create_identical_torch_tensor(a)
+
+    b = a.squeeze(1)
+    b_torch = a_torch.squeeze(1)
+
+    b_torch.sum().backward()
+    b.backward()
+
+    check_val_and_grad(a, a_torch)
+    check_val_and_grad(b, b_torch)
+
+
+def test_squeeze_no_squeeze():
+    a = Tensor.normal(0, 1, (30, 30, 30), requires_grad=True)
+    a_torch = create_identical_torch_tensor(a)
+
+    b = a.squeeze(1)
+    b_torch = a_torch.squeeze(1)
+
+    b_torch.sum().backward()
+    b.backward()
+
+    check_val_and_grad(a, a_torch)
+    check_val_and_grad(b, b_torch)
+
+
+def test_squeeze_scalar():
+    a = Tensor.normal(0, 1, (1, ), requires_grad=True)
+    a_torch = create_identical_torch_tensor(a)
+
+    b = a.squeeze(0)
+    b_torch = a_torch.squeeze(0)
+
+    b_torch.sum().backward()
+    b.backward()
+
+    check_val_and_grad(a, a_torch)
+    check_val_and_grad(b, b_torch)
+
+
 def test_multiple():
     a = Tensor.randn(2, 3, requires_grad=True)
     b = Tensor.randn(2, 3, requires_grad=True)

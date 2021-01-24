@@ -189,11 +189,14 @@ def forward_(mytorch_model, mytorch_criterion, pytorch_model,
 
     mytorch_y = mytorch_model(mytorch_x)
     if not mytorch_criterion is None:
-        mytorch_y = mytorch_criterion(mytorch_y, Tensor(y))
+        mytorch_y = mytorch_criterion(mytorch_y, Tensor(y, device=Device.GPU if test_on_gpu else Device.CPU))
 
     if test_on_gpu:
         mytorch_y.cpu()
         mytorch_model.cpu()
+    
+    if mytorch_y.shape == (1, ):
+        mytorch_y = mytorch_y.squeeze(0)
 
     # forward check
     assert assertions_all(mytorch_y.data, pytorch_y.detach().numpy(), 'y'), "Forward Failed"
@@ -210,7 +213,8 @@ def backward_(mytorch_x, mytorch_y, mytorch_model, pytorch_x, pytorch_y, pytorch
 
     if test_on_gpu:
         mytorch_y.gpu()
-
+        mytorch_model.gpu()
+        mytorch_x.gpu()
 
     mytorch_y.backward()
     pytorch_y.sum().backward()
@@ -410,7 +414,7 @@ def forward_backward_test(model, criterion=None, batch_size=(2,5), test_on_gpu=F
 
 
 def step_test(model, optimizer, train_steps, eval_steps,
-               criterion=None, batch_size=(2, 5)):
+               criterion=None, batch_size=(2, 5), test_on_gpu=False):
     """
         Tests subsequent forward, back, and update operations, printing whether
         a mismatch occurs in forward or backwards.
@@ -428,10 +432,10 @@ def step_test(model, optimizer, train_steps, eval_steps,
         pytorch_optimizer.zero_grad()
         optimizer.zero_grad()
 
-        (mx, my, px, py) = forward_(model, criterion,
-                                    pytorch_model, pytorch_criterion, x, y)
+        (mx, my, px, py) = forward_(model, criterion, pytorch_model, 
+                                    pytorch_criterion, x, y, test_on_gpu=test_on_gpu)
 
-        backward_(mx, my, model, px, py, pytorch_model)
+        backward_(mx, my, model, px, py, pytorch_model, test_on_gpu=test_on_gpu)
 
         pytorch_optimizer.step()
         optimizer.step()
@@ -443,7 +447,7 @@ def step_test(model, optimizer, train_steps, eval_steps,
         pytorch_optimizer.zero_grad()
         optimizer.zero_grad()
 
-        (mx, my, px, py) = forward_(model, criterion,
-                                    pytorch_model, pytorch_criterion, x, y)
+        (mx, my, px, py) = forward_(model, criterion, pytorch_model, 
+                                    pytorch_criterion, x, y, test_on_gpu=test_on_gpu)
 
     check_model_param_settings(model)

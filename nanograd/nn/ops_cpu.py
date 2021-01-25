@@ -1,5 +1,5 @@
 import numpy as np
-from nanograd.nn.conv_ops import get_conv2d_output_size
+from nanograd.nn.conv_ops import get_conv1d_output_size, get_conv2d_output_size
 from nanograd.nn.conv_ops import col2im
 
 # *************************************
@@ -103,6 +103,30 @@ def sigmoid_forward(a):
 
 def tanh_forward(a):
     return np.tanh(a)
+
+def conv1d_forward(a, weight, bias, stride, pad):
+    N, C, L = a.shape
+    F, _, KL = weight.shape
+    OL = get_conv1d_output_size(L, KL, stride, pad)
+
+    L += 2 * pad
+    x_padded = np.pad(a, ((0, 0), (0, 0), (pad, pad)), mode="constant")
+
+    stride_shape = (L, 1, C * L, stride)
+    strides = a.data.itemsize * np.array(stride_shape)
+    x_strides = np.lib.stride_tricks.as_strided(
+        x=x_padded,
+        strides=strides,
+        shape=(C, KL, N, OL),
+        writeable=False
+    )
+
+    x_cols = np.ascontiguousarray(x_strides)
+    x_cols.shape = (C * KL, N * OL)
+
+    out = weight.reshape(F, -1) @ x_cols + bias.reshape(-1, 1)
+    out.shape = (F, N, OL)
+    return out.transpose(1, 0, 2), x_cols
 
 def conv2d_forward(a, weight, bias, stride, pad):
     N, C, H, W = a.shape

@@ -73,13 +73,37 @@ def test_conv1d_forward():
     padding = 2
 
     inp = Tensor.normal(0, 1, (batch_size, in_channel, input_length))
-    inp_torch = create_identical_torch_tensor(inp).double()
+    inp_torch = create_identical_torch_tensor(inp, dtype=np.double)
 
     model = nnn.Sequential(nnn.Conv1d(in_channel, out_channel, kernel_size, stride, padding))
     torch_model = get_same_pytorch_mlp(model)
 
     y = model(inp)
     y_torch = torch_model(inp_torch)
+
+    assert y.shape == y_torch.shape
+    check_val(y, y_torch)
+
+def test_conv1d_forward_gpu_no_padding():
+    input_length = 400
+    batch_size = 16
+    in_channel, out_channel = 3, 10
+    kernel_size = 3
+    stride = 1
+    padding = 0
+
+    inp = Tensor.normal(0, 1, (batch_size, in_channel, input_length))
+    inp_torch = create_identical_torch_tensor(inp, dtype=np.double)
+
+    model = nnn.Sequential(nnn.Conv1d(in_channel, out_channel, kernel_size, stride, padding))
+    torch_model = get_same_pytorch_mlp(model)
+
+    inp.gpu(), model.gpu()
+
+    y = model(inp)
+    y_torch = torch_model(inp_torch)
+
+    y.cpu(), inp.cpu(), model.cpu()
 
     assert y.shape == y_torch.shape
     check_val(y, y_torch)
@@ -94,7 +118,7 @@ def test_conv2d_forward():
     padding = 2
 
     inp = Tensor.normal(0, 1, (batch_size, in_channel, input_height, input_width))
-    inp_torch = create_identical_torch_tensor(inp).double()
+    inp_torch = create_identical_torch_tensor(inp, dtype=np.double)
 
     model = nnn.Sequential(nnn.Conv2d(in_channel, out_channel, kernel_size, stride, padding))
     torch_model = get_same_pytorch_mlp(model)
@@ -115,7 +139,7 @@ def test_conv2d_forward_gpu_no_padding():
     padding = 0
 
     inp = Tensor.normal(0, 1, (batch_size, in_channel, input_height, input_width))
-    inp_torch = create_identical_torch_tensor(inp).double()
+    inp_torch = create_identical_torch_tensor(inp, dtype=np.double)
 
     model = nnn.Sequential(nnn.Conv2d(in_channel, out_channel, kernel_size, stride, padding))
     torch_model = get_same_pytorch_mlp(model)
@@ -140,7 +164,7 @@ def test_conv2d_forward_backward_gpu_no_padding():
     padding = 0
 
     inp = Tensor.normal(0, 1, (batch_size, in_channel, input_height, input_width), requires_grad=True)
-    inp_torch = create_identical_torch_tensor(inp).double()
+    inp_torch = create_identical_torch_tensor(inp, dtype=np.double)
 
     model = nnn.Sequential(nnn.Conv2d(in_channel, out_channel, kernel_size, stride, padding))
     torch_model = get_same_pytorch_mlp(model)
@@ -156,7 +180,9 @@ def test_conv2d_forward_backward_gpu_no_padding():
     y.cpu(), inp.cpu(), model.cpu()
 
     assert y.shape == y_torch.shape
+
     check_val_and_grad(y, y_torch)
+    check_val_and_grad(inp, inp_torch)
 
 """
 def test_conv2d_forward_gpu_padding():
@@ -174,7 +200,7 @@ def test_conv2d_forward_backward():
     padding = 2
 
     inp = Tensor.normal(0, 1, (batch_size, in_channel, input_height, input_width), requires_grad=True)
-    inp_torch = create_identical_torch_tensor(inp).double()
+    inp_torch = create_identical_torch_tensor(inp, dtype=np.double)
 
     model = nnn.Sequential(nnn.Conv2d(in_channel, out_channel, kernel_size, stride, padding))
     torch_model = get_same_pytorch_mlp(model)
@@ -187,11 +213,12 @@ def test_conv2d_forward_backward():
 
     assert y.shape == y_torch.shape
     check_val_and_grad(y, y_torch)    
+    check_val_and_grad(inp, inp_torch)
 
 
 def test_max_pool_2d_forward():
     inp = Tensor.normal(0, 1, (128, 6, 26, 26))
-    inp_torch = create_identical_torch_tensor(inp).double()
+    inp_torch = create_identical_torch_tensor(inp, dtype=np.double)
 
     model = nnn.Sequential(nnn.MaxPool2d(kernel_size=(2, 2), stride=2))
     torch_model = get_same_pytorch_mlp(model)
@@ -205,7 +232,7 @@ def test_max_pool_2d_forward():
 
 def test_max_pool_2d_forward_backward():
     inp = Tensor.normal(0, 1, (128, 6, 26, 26), requires_grad=True)
-    inp_torch = create_identical_torch_tensor(inp).double()
+    inp_torch = create_identical_torch_tensor(inp, dtype=np.double)
 
     model = nnn.Sequential(nnn.MaxPool2d(kernel_size=(2, 2), stride=2))
     torch_model = get_same_pytorch_mlp(model)
@@ -218,11 +245,12 @@ def test_max_pool_2d_forward_backward():
     
     assert y.shape == y_torch.shape
     check_val_and_grad(y, y_torch)
+    check_val_and_grad(inp, inp_torch)
 
 
 def test_avg_pool_2d_forward():
     inp = Tensor.normal(0, 1, (128, 6, 26, 26))
-    inp_torch = create_identical_torch_tensor(inp).double()
+    inp_torch = create_identical_torch_tensor(inp, dtype=np.double)
 
     model = nnn.Sequential(nnn.AvgPool2d(kernel_size=(2, 2), stride=2))
     torch_model = get_same_pytorch_mlp(model)
@@ -236,7 +264,7 @@ def test_avg_pool_2d_forward():
 
 def test_avg_pool_2d_forward_backward():
     inp = Tensor.normal(0, 1, (128, 6, 26, 26), requires_grad=True)
-    inp_torch = create_identical_torch_tensor(inp).double()
+    inp_torch = create_identical_torch_tensor(inp, dtype=np.double)
 
     model = nnn.Sequential(nnn.AvgPool2d(kernel_size=(2, 2), stride=2))
     torch_model = get_same_pytorch_mlp(model)
@@ -246,4 +274,5 @@ def test_avg_pool_2d_forward_backward():
 
     assert y.shape == y_torch.shape
     check_val_and_grad(y, y_torch)
+    check_val_and_grad(inp, inp_torch)
 

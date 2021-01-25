@@ -33,10 +33,10 @@ def check_val_and_grad(nano_tensor, torch_tensor, atol=1e-5):
     check_grad(nano_tensor, torch_tensor)
 
 
-def create_identical_torch_tensor(*args):
+def create_identical_torch_tensor(*args, dtype=np.float32):
     torch_tensors = []
     for arg in args:
-        t = torch.tensor(arg.data.astype(np.float32), requires_grad=arg.requires_grad)
+        t = torch.tensor(arg.data.astype(dtype), requires_grad=arg.requires_grad)
         torch_tensors.append(t)
     return tuple(torch_tensors) if len(torch_tensors) > 1 else torch_tensors[0]
 

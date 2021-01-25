@@ -394,6 +394,10 @@ class Tensor:
     def avg_pool2d(self, kernel_size:tuple=(2, 2)):
         r"""AvgPooling2d operation"""
         return self._pool2d(*kernel_size).mean(axis=(3, 5))
+
+    def conv1d(self, weight, bias, stride, padding):
+        return F.Conv1d.apply(self, weight, bias, stride, padding,
+                              cl_ctx=cl_ctx, cl_queue=cl_queue)
     
     def conv2d(self, weight, bias, stride, padding):
         return F.Conv2d.apply(self, weight, bias, stride, padding, 

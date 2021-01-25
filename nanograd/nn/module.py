@@ -383,7 +383,7 @@ class Conv1d(Module):
         Returns:
             Tensor: (batch_size, out_channel, output_size)
         """
-        return F.Conv1d.apply(x, self.weight, self.bias, self.stride, self.padding)
+        return x.conv1d(self.weight, self.bias, self.stride, self.padding)
 
 
 class Conv2d(Module):

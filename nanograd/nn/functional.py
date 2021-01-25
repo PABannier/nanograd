@@ -710,38 +710,25 @@ class Conv1d(Function):
             Returns:
                 Tensor: (batch_size, out_channel, output_size) output data
         """
-        N, C, L = x.shape
-        F, _, KL = weight.shape
-        OL = get_conv1d_output_size(L, KL, stride, pad)
 
-        L += 2 * pad
-        x_padded = np.pad(x.data, ((0, 0), (0, 0), (pad, pad)), mode="constant")
+        requires_grad = x.requires_grad
+        is_leaf = not x.requires_grad
 
-        stride_shape = (L, 1, C * L, stride)
-        strides = x.data.itemsize * np.array(stride_shape)
-        x_strides = np.lib.stride_tricks.as_strided(
-            x=x_padded,
-            strides=strides,
-            shape=(C, KL, N, OL),
-            writeable=False
-        )
-
-        x_cols = np.ascontiguousarray(x_strides)
-        x_cols.shape = (C * KL, N * OL)
-
-        out = weight.data.reshape(F, -1) @ x_cols + bias.data.reshape(-1, 1)
-        out.shape = (F, N, OL)
-        out = out.transpose(1, 0, 2)
-
+        if x.device == Device.CPU:
+            out, x_cols = ops_cpu.conv1d_forward(x.data, weight.data, bias.data, stride, pad)
+            ctx.x_cols = x_cols
+        else:
+            out = ops_gpu.conv1d_forward(ctx.cl_ctx, ctx.cl_queue, x.data, weight.data, bias.data, stride, pad)
+        
         ctx.save_for_backward(x, weight, bias)
-        ctx.x_cols = x_cols
         ctx.stride, ctx.pad = stride, pad
 
-        out = Tensor(out, requires_grad=x.requires_grad, is_leaf=not x.requires_grad)
+        out = Tensor(out, device=x.device, 
+                     requires_grad=requires_grad, is_leaf=is_leaf)
         out.children = [x, weight, bias]
         out.op = 'conv1d'
         return out
-    
+
     @staticmethod
     def backward(ctx, grad_output):
         x, weight, bias = ctx.saved_tensors

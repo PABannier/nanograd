@@ -2,7 +2,7 @@
 import numpy as np
 import functools
 
-from nanograd.nn.conv_ops import get_conv2d_output_size
+from nanograd.nn.conv_ops import get_conv1d_output_size, get_conv2d_output_size
 
 try:
     import pyopencl as cl
@@ -281,6 +281,40 @@ def pad2d_op(ctx, queue, a, pad, im_height, im_width):
                None, a.cl, ret.cl, np.int32(pad))
     return ret
 
+def conv1d_op(ctx, queue, a, weight, bias, stride, output_length):
+    batch_size, stride = np.int32(a.shape[0]), np.int32(stride)
+    output_length = np.int32(output_length)
+    num_filters, in_channel = np.int32(weight.shape[0]), np.int32(weight.shape[1])
+    kernel_length = np.int32(weight.shape[2])
+    length = np.int32(a.shape[2])
+
+    ret = GPUBuffer(ctx, (batch_size, num_filters, output_length))
+    prgm = cl.Program(ctx, """
+        __kernel void conv1d(__global const float *input, __global const float *weight, __global const float *bias,
+                             __global float *output, const int kernel_length, const int num_filters, const int in_channel,
+                             const int out_length, const int length, const int stride) {
+            int batch_id = get_global_id(0);
+            int filter_id = get_global_id(1);
+            int signal = get_global_id(2);
+
+            float res = 0.0;
+
+            for(int c = 0; c < in_channel; c++) {
+                for (int x = signal * stride; x < signal * stride + kernel_length; x++) {
+                    res += input[batch_id * in_channel * length + c  * length + x]  * \
+                           weight[filter_id * in_channel * kernel_length +  c * kernel_length + \
+                                  (x - signal * stride)];
+                }
+            }
+
+            output[batch_id * num_filters * out_length + filter_id * out_length + signal] = res;
+        }
+    """).build()
+
+    prgm.conv1d(queue, [batch_size, num_filters, length], None, a.cl, weight.cl, bias.cl, ret.cl, kernel_length, num_filters, in_channel,
+                np.int32(output_length), length, stride)
+    return ret
+
 def conv2d_op(ctx, queue, a, weight, bias, stride, output_height, output_width):
     batch_size, stride = np.int32(a.shape[0]), np.int32(stride)
     output_height, output_width = np.int32(output_height), np.int32(output_width)
@@ -392,7 +426,18 @@ def sum_forward(ctx, queue, a, axis, keepdims):
                      a, axis=axis, keepdims=keepdims)
 
 def conv1d_forward(ctx, queue, a, weight, bias, stride, pad):
-    raise NotImplementedError
+    batch_size, in_channel, length = a.shape
+    num_filters, _, kernel_length = weight.shape
+    output_length = get_conv1d_output_size(length, kernel_length, stride, pad)
+
+    if pad != 0:
+        a = pad1d_op(ctx, queue, a, pad, length)
+    
+    length += 2 * pad
+
+    out = conv1d_op(ctx, queue, a, weight, bias, stride, output_length)
+    return out
+
 
 def conv2d_forward(ctx, queue, a, weight, bias, stride, pad):
     batch_size, in_channel, im_height, im_width = a.shape
@@ -550,8 +595,8 @@ def conv2d_backward(ctx, queue, grad_output, x, weight, bias, stride, pad):
             for(int y = 0; y < out_height; y++) {
                 for(int x = 0; x < out_width; x++) {
                     for(int b = 0; b < batch_size; b++) {
-                        sum += grad_output[batch_size * num_filters * out_height * out_width + channel * out_height * out_width + y * out_width + x] * \
-                            x_tensor[batch_size * in_channel * im_width * im_height + in_channel * im_height * im_width + im_width * (y * stride + row) + x * stride + col];
+                        sum += grad_output[batch_size * num_filters * out_height * out_width + filter * out_height * out_width + y * out_width + x] * \
+                            x_tensor[batch_size * in_channel * im_width * im_height + channel * im_height * im_width + im_width * (y * stride + row) + x * stride + col];
                     }
                 }
             }

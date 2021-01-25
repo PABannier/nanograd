@@ -783,36 +783,20 @@ class Conv2d(Function):
             Returns:
                 Tensor: (batch_size, out_channel, output_height, output_width) output data
         """
-        N, C, H, W = x.shape
-        F, _, HH, WW = weight.shape
-        OH, OW = get_conv2d_output_size(H, W, (HH, WW), stride, pad)
 
-        x_padded = np.pad(x.data, ((0, 0), (0, 0), (pad, pad), (pad, pad)), mode="constant")
+        requires_grad = x.requires_grad
+        is_leaf = not requires_grad
 
-        H += 2 * pad
-        W += 2 * pad
-        out = np.zeros((N, F, OH, OW))
-
-        strides = (H * W, W, 1, C * H * W, stride * W, stride)
-        strides = x.data.itemsize * np.array(strides)
-        x_stride = np.lib.stride_tricks.as_strided(
-            x=x_padded,
-            shape=(C, HH, WW, N, OH, OW),
-            strides=strides,
-            writeable=False
-        )
-        x_cols = np.ascontiguousarray(x_stride)
-        x_cols.shape = (C * HH * WW, N * OH * OW)
-
-        res = weight.data.reshape(F, -1) @ x_cols + bias.data.reshape(-1, 1)
-        res.shape = (F, N, OH, OW)
-        out = res.transpose(1, 0, 2, 3)
+        if x.device == Device.CPU:
+            out, x_cols = ops_cpu.conv2d_forward(x.data, weight, bias, stride, pad)
+            ctx.x_cols = x_cols
+        else:
+            out = ops_gpu.conv2d_forward(ctx.cl_ctx, ctx.cl_queue, x.data, weight.data, bias.data, stride, pad)
 
         ctx.save_for_backward(x, weight, bias)
-        ctx.x_cols = x_cols
         ctx.stride, ctx.pad = stride, pad
 
-        out = Tensor(out, requires_grad=x.requires_grad, is_leaf=not x.requires_grad)
+        out = Tensor(out, requires_grad=requires_grad, is_leaf=is_leaf, device=x.device)
         out.children = [x, weight, bias]
         out.op = 'conv2d'
         
@@ -821,23 +805,19 @@ class Conv2d(Function):
     @staticmethod
     def backward(ctx, grad_output):
         x, weight, bias = ctx.saved_tensors
-        x_cols = ctx.x_cols
         stride, pad = ctx.stride, ctx.pad
 
-        N, C, H, W = x.shape
-        F, _, HH, WW = weight.shape
-        _, _,  OH, OW = grad_output.shape
+        if grad_output.device == Device.CPU:
+            x_cols = ctx.x_cols
+            stride, pad = ctx.stride, ctx.pad
+            grad_x, grad_weight, grad_bias = ops_cpu.conv2d_backward(grad_output.data, x, weight, bias, 
+                                                                     x_cols, stride, pad)
+        else:
+            grad_x, grad_weight, grad_bias = ops_gpu.conv2d_backward(ctx.cl_ctx, ctx.cl_queue, grad_output.data, 
+                                                                     x.data, weight.data, bias.data, stride, pad)
 
-        grad_bias = np.sum(grad_output.data, axis=(0, 2, 3))
-        grad_bias = Tensor(grad_bias)
-
-        grad_out_reshaped = grad_output.data.transpose(1, 2, 3, 0).reshape(F, -1)
-        grad_weight = (grad_out_reshaped @ x_cols.T).reshape(weight.shape)
-        grad_weight = Tensor(grad_weight)
-        
-        grad_x_cols = weight.data.reshape(F, -1).T @ grad_out_reshaped
-        grad_x_cols.shape = (C, HH, WW, N, OH, OW)
-        grad_x = col2im(grad_x_cols, x.shape, HH, WW, pad, stride) # Needs to be optimized
-        grad_x = Tensor(grad_x)
+        grad_x = Tensor(grad_x, device=grad_output.device)
+        grad_weight = Tensor(grad_weight, device=grad_output.device)
+        grad_bias = Tensor(grad_bias, device=grad_output.device)
 
         return grad_x, grad_weight, grad_bias

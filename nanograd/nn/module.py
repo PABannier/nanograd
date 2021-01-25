@@ -273,7 +273,7 @@ class BatchNorm1d(Module):
         if self.is_train == True:
             batch_mean = x.mean(0).unsqueeze(1).T()
             batch_var = ((x - batch_mean) ** 2).mean(0).unsqueeze(1).T()
-            batch_empirical_var = ((x - batch_mean) ** 2).sum(0) / (x.shape[0] - 1)
+            batch_empirical_var = ((x - batch_mean) ** 2).sum(0).unsqueeze(1).T() / (x.shape[0] - 1)
 
             self.running_mean = (1 - self.momentum) * self.running_mean + self.momentum * batch_mean
             self.running_var = (1 - self.momentum) * self.running_var + self.momentum * batch_empirical_var
@@ -419,7 +419,7 @@ class Conv2d(Module):
             Returns:
                 Tensor: (batch_size, out_channel, output_dim1, output_dim2)
         """
-        return F.Conv2d.apply(x, self.weight, self.bias, self.stride, self.padding)
+        return x.conv2d(self.weight, self.bias, self.stride, self.padding)
 
 
 class MaxPool2d(Module):

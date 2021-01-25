@@ -1,5 +1,6 @@
 import numpy as np
-
+from nanograd.nn.conv_ops import get_conv2d_output_size
+from nanograd.nn.conv_ops import col2im
 
 # *************************************
 # ************** Helpers **************
@@ -103,6 +104,33 @@ def sigmoid_forward(a):
 def tanh_forward(a):
     return np.tanh(a)
 
+def conv2d_forward(a, weight, bias, stride, pad):
+    N, C, H, W = a.shape
+    F, _, HH, WW = weight.shape
+    OH, OW = get_conv2d_output_size(H, W, (HH, WW), stride, pad)
+
+    x_padded = np.pad(a, ((0, 0), (0, 0), (pad, pad), (pad, pad)), mode="constant")
+
+    H += 2 * pad
+    W += 2 * pad
+    out = np.zeros((N, F, OH, OW))
+
+    strides = (H * W, W, 1, C * H * W, stride * W, stride)
+    strides = a.itemsize * np.array(strides)
+    x_stride = np.lib.stride_tricks.as_strided(
+        x=x_padded,
+        shape=(C, HH, WW, N, OH, OW),
+        strides=strides,
+        writeable=False
+    )
+
+    x_cols = np.ascontiguousarray(x_stride)
+    x_cols.shape = (C * HH * WW, N * OH * OW)
+
+    res = weight.data.reshape(F, -1) @ x_cols + bias.data.reshape(-1, 1)
+    res.shape = (F, N, OH, OW)
+    return res.transpose(1, 0, 2, 3), x_cols
+
 # *************************************
 # ********** Backward passes **********
 # *************************************
@@ -179,5 +207,18 @@ def sum_backward(grad_output, a, axis):
 def conv1d_backward(a, weight, bias, stride, pad):
     raise NotImplementedError
 
-def conv2d_backward(a, weight, bias, stride, pad):
-    raise NotImplementedError
+def conv2d_backward(grad_output, x, weight, bias, x_cols, stride, pad):
+    N, C, H, W = x.shape
+    F, _, HH, WW = weight.shape
+    _, _,  OH, OW = grad_output.shape
+
+    grad_bias = np.sum(grad_output, axis=(0, 2, 3))
+
+    grad_out_reshaped = grad_output.transpose(1, 2, 3, 0).reshape(F, -1)
+    grad_weight = (grad_out_reshaped @ x_cols.T).reshape(weight.shape)
+        
+    grad_x_cols = weight.data.reshape(F, -1).T @ grad_out_reshaped
+    grad_x_cols.shape = (C, HH, WW, N, OH, OW)
+    grad_x = col2im(grad_x_cols, x.shape, HH, WW, pad, stride) # Needs to be optimized
+
+    return grad_x, grad_weight, grad_bias

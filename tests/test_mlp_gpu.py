@@ -86,13 +86,34 @@ def test_batchnorm1d_backward():
     model = nnn.Sequential(nnn.Linear(10, 20), nnn.BatchNorm1d(20), nnn.ReLU())
     forward_backward_test(model, test_on_gpu=True)
 
+
+def test_batchnorm2d_forward():
+    np.random.seed(SEED)
+    model = nnn.Sequential(nnn.Conv2d(3, 10, 3, 1), nnn.BatchNorm2d(10), nnn.ReLU())
+    pytorch_model = get_same_pytorch_mlp(model)
+
+    shape = (16, 3, 10, 10)
+    x = Tensor.normal(0, 1, shape)
+    x_torch = create_identical_torch_tensor(x).double()
+
+    x.gpu()
+    model.gpu()
+
+    y = model(x)
+    y_torch = pytorch_model(x_torch)
+
+    x.cpu(), y.cpu()
+
+    check_val_and_grad(y, y_torch)
+    check_val_and_grad(x, x_torch)
+
 """
 def test_batchnorm2d_backward():
     np.random.seed(SEED)
-    model = nnn.Sequential(nnn.Linear(10, 20), nnn.BatchNorm2d(10), nnn.ReLU())
+    model = nnn.Sequential(nnn.Conv2d(3, 10, 3, 1), nnn.BatchNorm2d(10), nnn.ReLU())
     pytorch_model = get_same_pytorch_mlp(model)
 
-    shape = (16, 10, 10)
+    shape = (16, 3, 10, 10)
     x = Tensor.normal(0, 1, shape)
     x_torch = create_identical_torch_tensor(x).double()
 
@@ -110,6 +131,7 @@ def test_batchnorm2d_backward():
     check_val_and_grad(y, y_torch)
     check_val_and_grad(x, x_torch)
 """
+
 
 # ****** SGD tests ******
 

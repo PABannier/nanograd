@@ -326,6 +326,7 @@ class BatchNorm2d(Module):
         """
         if self.is_train == True:
             batch_mean = x.mean(axis=(0, 2, 3))
+            
             batch_var = ((x - batch_mean.reshape(shape=[1, -1, 1, 1])) ** 2).mean(axis=(0, 2, 3))
             batch_empirical_var = ((x - batch_mean.reshape(shape=[1, -1, 1, 1])) ** 2).sum(axis=(0, 2, 3)) / (x.shape[0] - 1)
 
@@ -570,6 +571,31 @@ class ReLU(Module):
         return x.relu()
 
 
+class LeakyReLU(Module):
+    r"""
+        Leaky ReLU Activation Layer
+
+        Applies a Leaky Rectified Linear Unit activation function to
+        the input
+
+        Inherits from:
+            Module (nn.module.Module)
+    """
+    def __init__(self, alpha=0.01) -> None:
+        super().__init__()
+
+        self.alpha = Tensor(alpha, is_parameter=False, name='alpha_relu')
+
+    def forward(self, x:Tensor) -> Tensor:
+        """
+            Args:
+                x (Tensor): (batch_size, num_features)
+            Returns:
+                Tensor: (batch_size, num_features)
+        """
+        return x.relu() + self.alpha * (-x).relu()
+    
+
 class Sigmoid(Module):
     r"""
         Sigmoid Activation Layer
@@ -577,7 +603,7 @@ class Sigmoid(Module):
         Applies a Sigmoid activation function to the input
 
         Inherits from:
-            Module (nn.module.Modue)
+            Module (nn.module.Module)
     """
     def __init__(self) -> None:
         super().__init__()
@@ -589,7 +615,7 @@ class Sigmoid(Module):
             Returns:
                 Tensor: (batch_size, num_features)
         """
-        return F.Sigmoid.apply(x)
+        return x.sigmoid()
 
 
 class Tanh(Module):
@@ -599,7 +625,7 @@ class Tanh(Module):
         Applies a Hyperbolic Tangent activation function to the input
 
         Inherits from:
-            Module (nn.module.Modue)
+            Module (nn.module.Module)
     """
     def __init__(self) -> None:
         super().__init__()
@@ -611,4 +637,60 @@ class Tanh(Module):
             Returns:
                 Tensor: (batch_size, num_features)
         """
-        return F.Tanh.apply(x)
+        return x.tanh()
+
+
+class ELU(Module):
+    r"""
+        ELU Activation Layer
+        
+        Applies an ELU (Exponential Linear Unit) activation function 
+        to the input
+
+        Alpha is learnt by gradient descent
+
+        Inherits from:
+            Module (nn.module.Module)
+    """
+    def __init__(self, alpha:float=1.0) -> None:
+        super().__init__()
+
+        self.alpha = Tensor(alpha, requires_grad=True, is_parameter=True, name="elu_alpha")
+    
+    def forward(self, x:Tensor) -> Tensor:
+        """
+            Args:
+                x (Tensor): (batch_size, num_features)
+            Returns:
+                Tensor: (batch_size, num_features)
+        """
+        pos_part = x.relu()
+        neg_part = (-x).relu()
+
+        return pos_part + self.alpha * (neg_part.exp() - 1)
+
+
+class Swish(Module):
+    r"""
+        Swish Activation Layer
+
+        Applies a Swish activation function to the input
+
+        Beta is learnt by gradient descent
+
+        Inherits from:
+            Module (nn.module.Module)
+    """
+    def __init__(self, beta:float=1.0) -> None:
+        super().__init__()
+
+        self.beta = Tensor(beta, requires_grad=True, is_parameter=True, name='swish_beta')
+    
+    def forward(self, x:Tensor) -> Tensor:
+        """
+            Args:
+                x (Tensor): (batch_size, num_features)
+            Returns:
+                Tensor: (batch_size, num_features)
+        """
+        return x * (self.beta * x).sigmoid()

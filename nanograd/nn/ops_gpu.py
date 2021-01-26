@@ -571,7 +571,7 @@ def sum_backward(ctx, queue, grad_output, a, axis):
     shape = [1 if axis is None or i in axis else a.shape[i] for i in range(len(a.shape))]
     return GPUBuffer(ctx, shape, hostbuf=grad_output)
 
-def conv1d_backward(ctx, queue, a, weight, bias, stride, pad):
+def conv1d_backward(ctx, queue, grad_output, x, weight, bias, stride, pad):
     raise NotImplementedError
 
 def conv2d_backward(ctx, queue, grad_output, x, weight, bias, stride, pad):

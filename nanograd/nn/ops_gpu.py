@@ -261,6 +261,30 @@ def one_hot_encoding(ctx, queue, a, num_classes):
     prgm.one_hot(queue, [n_rows, n_cols], None, a.cl, ret.cl, n_cols)
     return ret
 
+def pad1d_op(ctx, queue, a, pad, length):
+    padded_length = np.int32(length + 2 * pad)
+    batch_size, in_channel = np.int32(a.shape[0]), np.int32(a.shape[1])
+    ret = GPUBuffer(ctx, (batch_size, in_channel, padded_length))
+    prgm = cl.Program(ctx, """
+        __kernel void pad1d(__global const float *a, __global float *res, const int batch_size,
+                            const int in_channel, const int padded_length, const int length,
+                            const int pad) {
+            
+            int batch_id = get_global_id(0);
+            int channel_id = get_global_id(1);
+            int col = get_global_id(2);
+
+            if((col - pad >= 0) && (col - pad < length)) {
+                res[batch_id * in_channel * padded_length + channel_id * padded_length + col] = \
+                  a[batch_id * in_channel * length + channel_id * length + col-pad];
+            }
+        }
+    """).build()
+
+    prgm.pad1d(queue, [batch_size, in_channel, padded_length], None, a.cl, ret.cl,
+               batch_size, in_channel, padded_length, np.int32(length), np.int32(pad))
+    return ret
+
 def pad2d_op(ctx, queue, a, pad, im_height, im_width):
     padded_height, padded_width = np.int32(im_height + 2 * pad), np.int32(im_width + 2 * pad)
     batch_size, in_channel = np.int32(a.shape[0]), np.int32(a.shape[1])
@@ -301,24 +325,25 @@ def conv1d_op(ctx, queue, a, weight, bias, stride, output_length):
                              const int out_length, const int length, const int stride) {
             int batch_id = get_global_id(0);
             int filter_id = get_global_id(1);
-            int row = get_global_id(2);
+            int col = get_global_id(2);
 
             float res = 0.0;
 
             for(int c = 0; c < in_channel; c++) {
-                for (int x = row * stride; x < row * stride + kernel_length; x++) {
-                    res += input[batch_id * in_channel * length + c  * length + x]  * \
+                for (int x = col * stride; x < col * stride + kernel_length; x++) {
+                    res += input[batch_id * in_channel * length + c * length + x] * \
                            weight[filter_id * in_channel * kernel_length + c * kernel_length + \
-                                  (x - row * stride)];
+                                  (x - col * stride)];
                 }
             }
 
-            output[batch_id * num_filters * out_length + filter_id * out_length + row] = res;
+            output[batch_id * num_filters * out_length + filter_id * out_length + col] = res;
         }
     """).build()
 
-    prgm.conv1d(queue, [batch_size, num_filters, length], None, a.cl, weight.cl, bias.cl, ret.cl, kernel_length, num_filters, in_channel,
-                np.int32(output_length), length, stride)
+    prgm.conv1d(queue, [batch_size, num_filters, output_length], None, a.cl, weight.cl, bias.cl, 
+                ret.cl, kernel_length, num_filters, in_channel, np.int32(output_length), length, 
+                stride)
     return ret
 
 def conv2d_op(ctx, queue, a, weight, bias, stride, output_height, output_width):
@@ -454,10 +479,6 @@ def conv2d_forward(ctx, queue, a, weight, bias, stride, pad):
 
     if pad != 0:
         a = pad2d_op(ctx, queue, a, pad, im_height, im_width)
-
-    cpu_data = np.empty(a.shape, dtype=np.float32)
-    cl.enqueue_copy(queue, cpu_data, a.cl, is_blocking=True)
-    print(cpu_data)
     
     im_height += 2 * pad
     im_width += 2 * pad

@@ -361,7 +361,7 @@ class Conv1d(Module):
             kernel_size (int): edge length of the kernel (i.e. 3x3 kernel <-> kernel_size = 3)
             stride (int): Stride of the convolution (filter)
     """
-    def __init__(self, in_channel:int, out_channel:int, kernel_size:int, 
+    def __init__(self, in_channel:int, out_channel:int, kernel_size:int,
                  stride:int=1, padding:int=0, weight_initialization:str="kaiming_normal") -> None:
         super().__init__()
         self.in_channel, self.out_channel = in_channel, out_channel
@@ -397,7 +397,7 @@ class Conv2d(Module):
             stride (int): stride of the convolution (filter)
             padding (int): padding for the convolution
     """
-    def __init__(self, in_channel:int, out_channel:int, kernel_size:int, 
+    def __init__(self, in_channel:int, out_channel:int, kernel_size:int,
                  stride:int=1, padding:int=0, weight_initialization:str="kaiming_normal") -> None:
         super().__init__()
         self.in_channel, self.out_channel = in_channel, out_channel

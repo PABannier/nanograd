@@ -267,18 +267,24 @@ def pad2d_op(ctx, queue, a, pad, im_height, im_width):
     ret = GPUBuffer(ctx, (batch_size, in_channel, padded_height, padded_width))
     prgm = cl.Program(ctx, """
         __kernel void pad2d(__global const float *a, __global float *res, const int batch_size, 
-                            const int num_channels, const int height, const int width, const int pad) {
-            int gid0 = get_global_id(0);
-            int gid1 = get_global_id(1);
-            int gid2 = get_global_id(2);
+                            const int in_channel, const int padded_height, const int padded_width,
+                            const int im_height, const int im_width, const int pad) {
 
-            int idx =  .... + pad + gid1 
-            res[idx] = a[idx];
+            int batch_id = get_global_id(0) / in_channel;
+            int channel_id = get_global_id(0) % in_channel;
+            int row = get_global_id(1);
+            int col = get_global_id(2);
+
+            if((row - pad >= 0) && (col - pad >= 0) && (col - pad < im_width) && (row - pad < im_height)) {
+                res[batch_id * in_channel * padded_height * padded_width + channel_id * padded_height * padded_width + row * padded_width + col] = \
+                  a[batch_id * in_channel * im_height * im_width + channel_id * im_height * im_width + (row - pad) * im_width + col-pad];
+            }
         }
     """).build()
     
     prgm.pad2d(queue, [batch_size * in_channel, padded_height, padded_width], 
-               None, a.cl, ret.cl, np.int32(pad))
+               None, a.cl, ret.cl, batch_size, in_channel, padded_height, padded_width,
+               np.int32(im_height), np.int32(im_width), np.int32(pad))
     return ret
 
 def conv1d_op(ctx, queue, a, weight, bias, stride, output_length):
@@ -295,19 +301,19 @@ def conv1d_op(ctx, queue, a, weight, bias, stride, output_length):
                              const int out_length, const int length, const int stride) {
             int batch_id = get_global_id(0);
             int filter_id = get_global_id(1);
-            int signal = get_global_id(2);
+            int row = get_global_id(2);
 
             float res = 0.0;
 
             for(int c = 0; c < in_channel; c++) {
-                for (int x = signal * stride; x < signal * stride + kernel_length; x++) {
+                for (int x = row * stride; x < row * stride + kernel_length; x++) {
                     res += input[batch_id * in_channel * length + c  * length + x]  * \
-                           weight[filter_id * in_channel * kernel_length +  c * kernel_length + \
-                                  (x - signal * stride)];
+                           weight[filter_id * in_channel * kernel_length + c * kernel_length + \
+                                  (x - row * stride)];
                 }
             }
 
-            output[batch_id * num_filters * out_length + filter_id * out_length + signal] = res;
+            output[batch_id * num_filters * out_length + filter_id * out_length + row] = res;
         }
     """).build()
 
@@ -448,6 +454,10 @@ def conv2d_forward(ctx, queue, a, weight, bias, stride, pad):
 
     if pad != 0:
         a = pad2d_op(ctx, queue, a, pad, im_height, im_width)
+
+    cpu_data = np.empty(a.shape, dtype=np.float32)
+    cl.enqueue_copy(queue, cpu_data, a.cl, is_blocking=True)
+    print(cpu_data)
     
     im_height += 2 * pad
     im_width += 2 * pad
@@ -571,7 +581,7 @@ def conv2d_backward(ctx, queue, grad_output, x, weight, bias, stride, pad):
                                     weight[f * in_channel * kernel_height * kernel_width + channel * kernel_height * kernel_width + ky * kernel_width + kx];
                             }
 
-                            grad_x[batch_size * in_channel * im_height * im_width + channel * im_height * im_width + (y * stride + ky) * im_width + x * stride + kx] += sum;
+                            grad_x[batch * in_channel * im_height * im_width + channel * im_height * im_width + (y * stride + ky) * im_width + x * stride + kx] += sum;
                         }
                     }
                 }
@@ -595,8 +605,8 @@ def conv2d_backward(ctx, queue, grad_output, x, weight, bias, stride, pad):
             for(int y = 0; y < out_height; y++) {
                 for(int x = 0; x < out_width; x++) {
                     for(int b = 0; b < batch_size; b++) {
-                        sum += grad_output[batch_size * num_filters * out_height * out_width + filter * out_height * out_width + y * out_width + x] * \
-                            x_tensor[batch_size * in_channel * im_width * im_height + channel * im_height * im_width + im_width * (y * stride + row) + x * stride + col];
+                        sum += grad_output[b * num_filters * out_height * out_width + filter * out_height * out_width + y * out_width + x] * \
+                            x_tensor[b * in_channel * im_width * im_height + channel * im_height * im_width + im_width * (y * stride + row) + x * stride + col];
                     }
                 }
             }

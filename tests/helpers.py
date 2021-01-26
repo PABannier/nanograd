@@ -116,6 +116,7 @@ def get_same_pytorch_mlp(model):
             layers[-1].weight = nn.Parameter(
                 torch.tensor(l.weight.data).float())
             layers[-1].bias = nn.Parameter(torch.tensor(l.bias.data).float())
+           
         
         elif isinstance(l, nnn.AvgPool2d):
             layers.append(nn.AvgPool2d(l.kernel_size, l.stride))

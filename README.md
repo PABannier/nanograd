@@ -38,11 +38,11 @@ Inspired from <a href="https://github.com/geohot/tinygrad">geohot's tinygrad</a>
 
 - PyTorch-like autodifferentiation engine (dynamically constructed computational graph)
 - Weight initialization: Glorot uniform, Glorot normal, Kaiming uniform, Kaiming normal
-- Activations: ReLU, Sigmoid, tanh
-- Convolutions: Conv2d, MaxPool2d, AvgPool2d
+- Activations: ReLU, Sigmoid, tanh, Swish, ELU, LeakyReLU
+- Convolutions: Conv1d, Conv2d, MaxPool2d, AvgPool2d
 - Layers: Linear, BatchNorm1d, BatchNorm2d, Flatten, Dropout
 - Optimizers: SGD, Adam, AdamW
-- Loss: CrossEntropyLoss
+- Loss: CrossEntropyLoss, Mean squared error
 - Computational graph visualizer (see example)
 
 ### A quick side-by-side comparison between PyTorch and Nanograd for tensor computations
@@ -153,14 +153,10 @@ f.plot_backward()
 
 ## TODO
 
-- Enhance Conv2d backward pass on CPU (**high priority**)
-- GPU forward passes: reduce ops + Slice, transpose
-- GPU backward passes: everything
-- Enhance reduce ops on OpenCL (task paralleling)
-- Keras-like train visualizer
-- Activation map visualizer for CNN
-- Interpretability tools: GradCAM, Attention visualizer...
-- Code example with EfficientNet-B0, DistilBERT
+- Solve batchnorm issues
+- Add GRU, LSTM cells
+- Code example with EfficientNet-B0, CIFAR-10, MNIST
+- Code a transformer with Nanograd and train it on GPU
 
 
 ## License

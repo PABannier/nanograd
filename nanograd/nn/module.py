@@ -524,8 +524,6 @@ class Dropout(Module):
 class CrossEntropyLoss(Module):
     r"""
         The XELoss function.
-        This class is for human use; just calls function in nn.functional.
-        Does not need args to initialize.
         
         >>> criterion = CrossEntropyLoss()
         >>> criterion(outputs, labels)
@@ -543,6 +541,29 @@ class CrossEntropyLoss(Module):
             Tensor: loss, stored as a float in a tensor 
         """
         return F.cross_entropy(predicted, target)
+    
+
+class MSELoss(Module):
+    r"""
+        The MSELoss function.
+        Mean squared error function is used for regression problems.
+
+        >>> criterion =  MSELoss()
+        >>> criterion(outputs, labels)
+        3.241
+    """
+    def __init__(self) -> None:
+        pass
+
+    def forward(self, predicted:Tensor, target:Tensor) -> Tensor:
+        """
+        Args:
+            predicted (Tensor): (batch_size, num_classes)
+            target (Tensor): (batch_size,)
+        Returns:
+            Tensor: loss, stored as a float in a tensor
+        """
+        return ((predicted - target) ** 2).mean()
 
 
 # ***** Activation functions *****

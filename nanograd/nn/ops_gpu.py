@@ -439,10 +439,8 @@ def transpose_forward(ctx, queue, a):
     return perm_axis_op(ctx, queue, a, order=(1, 0))
 
 def reshape_forward(ctx, queue, a, shape):
-    new_shape = tuple([-np.prod(a.shape) // np.prod(shape) 
-                       if s == -1 else s for s in shape])
-    assert np.prod(new_shape) == np.prod(shape), "Inconsistent array reshape size"
-    return GPUBuffer(ctx, new_shape, hostbuf=a.data)
+    shape = tuple(-np.prod(a.shape) // np.prod(shape) if s == -1 else s for s in shape)
+    return GPUBuffer(ctx, shape, hostbuf=a.data)
 
 def max_forward(ctx, queue, a, axis, keepdims):
     return reduce_op(ctx, queue, 'out = max(a, out)', 'out',

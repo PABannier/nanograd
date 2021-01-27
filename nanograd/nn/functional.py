@@ -210,7 +210,9 @@ class Reshape(Function):
         
         out = Tensor(out_data, requires_grad=requires_grad, 
                      is_leaf=is_leaf, device=a.device)
-            
+        
+        assert np.prod(out.shape) == np.prod(a.shape), "Inconsistent array reshape size"
+
         out.children = [a]
         out.op = 'reshape'
         return out

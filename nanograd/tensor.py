@@ -171,7 +171,7 @@ class Tensor:
             return cpu_data
         
         if not isinstance(data, np.ndarray):
-            data = np.array(data).astype(np.float32)
+            data = np.array([data]).astype(np.float32)
 
         if device == Device.GPU:
             if cl_ctx is None:

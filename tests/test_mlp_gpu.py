@@ -107,7 +107,7 @@ def test_batchnorm2d_forward():
     check_val_and_grad(y, y_torch)
     check_val_and_grad(x, x_torch)
 
-"""
+
 def test_batchnorm2d_backward():
     np.random.seed(SEED)
     model = nnn.Sequential(nnn.Conv2d(3, 10, 3, 1), nnn.BatchNorm2d(10), nnn.ReLU())
@@ -130,7 +130,6 @@ def test_batchnorm2d_backward():
 
     check_val_and_grad(y, y_torch)
     check_val_and_grad(x, x_torch)
-"""
 
 
 # ****** SGD tests ******

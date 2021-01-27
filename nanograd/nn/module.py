@@ -324,11 +324,10 @@ class BatchNorm2d(Module):
             Returns:
                 Tensor: (batch_size, num_features)
         """
-        if self.is_train == True:
-            batch_mean = x.mean(axis=(0, 2, 3))
-            
-            batch_var = ((x - batch_mean.reshape(shape=[1, -1, 1, 1])) ** 2).mean(axis=(0, 2, 3))
-            batch_empirical_var = ((x - batch_mean.reshape(shape=[1, -1, 1, 1])) ** 2).sum(axis=(0, 2, 3)) / (x.shape[0] - 1)
+        if self.is_train == True:  # (16, 10, 8, 8)
+            batch_mean = x.mean(axis=(0, 2, 3)) # (10, )
+            batch_var = ((x - batch_mean.reshape(shape=[1, -1, 1, 1])) ** 2).mean(axis=(0, 2, 3)) # (10, )
+            batch_empirical_var = ((x - batch_mean.reshape(shape=[1, -1, 1, 1])) ** 2).sum(axis=(0, 2, 3)) / (x.shape[0] - 1) # (10, )
 
             self.running_mean = (1 - self.momentum) * self.running_mean + self.momentum * batch_mean
             self.running_var = (1 - self.momentum) * self.running_var + self.momentum * batch_empirical_var
@@ -348,6 +347,7 @@ class BatchNorm2d(Module):
         """
         x_hat = (x - mean.reshape(shape=[1, -1, 1, 1])) / (var + self.eps).sqrt().reshape(shape=[1, -1, 1, 1])
         out = self.gamma.reshape(shape=[1, -1, 1, 1]) * x_hat + self.beta.reshape(shape=[1, -1, 1, 1])
+
         out.name = 'bn_2d_res'
         return out
 

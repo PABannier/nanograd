@@ -698,16 +698,14 @@ class Tanh(Function):
 
 class Conv1d(Function):
     @staticmethod
-    def forward(ctx, x, weight, bias, stride, pad):
+    def forward(ctx, x, weight, stride):
         """
             The forward/backward of a Conv1d Layer in the comp graph.
             
             Args:
                 x (Tensor): (batch_size, in_channel, input_size) input data
                 weight (Tensor): (out_channel, in_channel, kernel_length)
-                bias (Tensor): (out_channel,)
                 stride (int): Stride of the convolution
-                pad (int): Padding for the convolution
             
             Returns:
                 Tensor: (batch_size, out_channel, output_size) output data
@@ -717,32 +715,28 @@ class Conv1d(Function):
         is_leaf = not x.requires_grad
 
         if x.device == Device.CPU:
-            out, x_cols = ops_cpu.conv1d_forward(x.data, weight.data, bias.data, stride, pad)
+            out, x_cols = ops_cpu.conv1d_forward(x.data, weight.data, stride)
             ctx.x_cols = x_cols
         else:
-            out = ops_gpu.conv1d_forward(ctx.cl_ctx, ctx.cl_queue, x.data, weight.data, bias.data, stride, pad)
+            out = ops_gpu.conv1d_forward(ctx.cl_ctx, ctx.cl_queue, x.data, weight.data, stride)
         
-        ctx.save_for_backward(x, weight, bias)
-        ctx.stride, ctx.pad = stride, pad
+        ctx.save_for_backward(x, weight)
+        ctx.stride = stride
 
-        out = Tensor(out, device=x.device, 
-                     requires_grad=requires_grad, is_leaf=is_leaf)
-        out.children = [x, weight, bias]
+        out = Tensor(out, device=x.device, requires_grad=requires_grad, is_leaf=is_leaf)
+        out.children = [x, weight]
         out.op = 'conv1d'
         return out
 
     @staticmethod
     def backward(ctx, grad_output):
-        x, weight, bias = ctx.saved_tensors
+        x, weight = ctx.saved_tensors
         x_cols = ctx.x_cols
-        stride, pad = ctx.stride, ctx.pad
+        stride = ctx.stride
 
         N, C, L = x.shape
         F, _, KL = weight.shape
         _, _,  OL = grad_output.shape
-
-        grad_bias = np.sum(grad_output.data, axis=(0, 2))
-        grad_bias = Tensor(grad_bias)
 
         grad_out_reshaped = grad_output.data.transpose(1, 2, 0).reshape(F, -1)
         grad_weight = (grad_out_reshaped @ x_cols.T).reshape(weight.shape)
@@ -750,24 +744,22 @@ class Conv1d(Function):
 
         grad_x_cols = weight.data.reshape(F, -1).T @ grad_out_reshaped
         grad_x_cols.shape = (C, KL, N, OL)
-        grad_x = col2im(grad_x_cols, x.shape, 1, KL, pad, stride)
+        grad_x = col2im(grad_x_cols, x.shape, 1, KL, 0, stride)
         grad_x = Tensor(grad_x)
 
-        return grad_x, grad_weight, grad_bias
+        return grad_x, grad_weight
         
 
 class Conv2d(Function):
     @staticmethod
-    def forward(ctx, x, weight, bias, stride, pad):
+    def forward(ctx, x, weight, stride):
         """
             The forward/backward of a Conv2d Layer in the comp graph.
             
             Args:
                 x (Tensor): (batch_size, in_channel, input_height, input_width) input data
                 weight (Tensor): (out_channel, in_channel, kernel_height, kernel_width)
-                bias (Tensor): (out_channel,)
                 stride (int): Stride of the convolution
-                pad (int): Padding for the convolution
             
             Returns:
                 Tensor: (batch_size, out_channel, output_height, output_width) output data
@@ -777,36 +769,33 @@ class Conv2d(Function):
         is_leaf = not requires_grad
 
         if x.device == Device.CPU:
-            out, x_cols = ops_cpu.conv2d_forward(x.data, weight, bias, stride, pad)
+            out, x_cols = ops_cpu.conv2d_forward(x.data, weight, stride)
             ctx.x_cols = x_cols
         else:
-            out = ops_gpu.conv2d_forward(ctx.cl_ctx, ctx.cl_queue, x.data, weight.data, bias.data, stride, pad)
+            out = ops_gpu.conv2d_forward(ctx.cl_ctx, ctx.cl_queue, x.data, weight.data, stride)
 
-        ctx.save_for_backward(x, weight, bias)
-        ctx.stride, ctx.pad = stride, pad
+        ctx.save_for_backward(x, weight)
+        ctx.stride = stride
 
         out = Tensor(out, requires_grad=requires_grad, is_leaf=is_leaf, device=x.device)
-        out.children = [x, weight, bias]
+        out.children = [x, weight]
         out.op = 'conv2d'
         
         return out
     
     @staticmethod
     def backward(ctx, grad_output):
-        x, weight, bias = ctx.saved_tensors
-        stride, pad = ctx.stride, ctx.pad
+        x, weight = ctx.saved_tensors
+        stride = ctx.stride
 
         if grad_output.device == Device.CPU:
             x_cols = ctx.x_cols
-            stride, pad = ctx.stride, ctx.pad
-            grad_x, grad_weight, grad_bias = ops_cpu.conv2d_backward(grad_output.data, x, weight, bias, 
-                                                                     x_cols, stride, pad)
+            grad_x, grad_weight = ops_cpu.conv2d_backward(grad_output.data, x, weight, x_cols, stride)
         else:
-            grad_x, grad_weight, grad_bias = ops_gpu.conv2d_backward(ctx.cl_ctx, ctx.cl_queue, grad_output.data, 
-                                                                     x.data, weight.data, bias.data, stride, pad)
+            grad_x, grad_weight = ops_gpu.conv2d_backward(ctx.cl_ctx, ctx.cl_queue, grad_output.data, 
+                                                                     x.data, weight.data, stride)
 
         grad_x = Tensor(grad_x, device=grad_output.device)
         grad_weight = Tensor(grad_weight, device=grad_output.device)
-        grad_bias = Tensor(grad_bias, device=grad_output.device)
 
-        return grad_x, grad_weight, grad_bias
+        return grad_x, grad_weight

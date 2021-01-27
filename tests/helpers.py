@@ -105,19 +105,18 @@ def get_same_pytorch_mlp(model):
 
         elif isinstance(l, nnn.Conv1d):
             layers.append(nn.Conv1d(int(l.in_channel), int(l.out_channel), \
-                                    l.kernel_size, int(l.stride), int(l.padding)))
+                                    l.kernel_size, int(l.stride), int(l.padding[0])))
             layers[-1].weight = nn.Parameter(
                 torch.tensor(l.weight.data).float())
             layers[-1].bias = nn.Parameter(torch.tensor(l.bias.data).float())
 
         elif isinstance(l, nnn.Conv2d):
             layers.append(nn.Conv2d(int(l.in_channel), int(l.out_channel), \
-                                    l.kernel_size, int(l.stride), int(l.padding)))
+                                    l.kernel_size, int(l.stride), int(l.padding[0])))
             layers[-1].weight = nn.Parameter(
                 torch.tensor(l.weight.data).float())
             layers[-1].bias = nn.Parameter(torch.tensor(l.bias.data).float())
            
-        
         elif isinstance(l, nnn.AvgPool2d):
             layers.append(nn.AvgPool2d(l.kernel_size, l.stride))
         
@@ -244,6 +243,8 @@ def check_gradients(mytorch_x, pytorch_x, mytorch_model, pytorch_model):
     for mytorch_linear, pytorch_linear in zip(mytorch_linear_layers, pytorch_linear_layers):
         pytorch_dW = pytorch_linear.weight.grad.detach().numpy()
         mytorch_dW = mytorch_linear.weight.grad.data
+        print(mytorch_linear.weight.shape)
+        print(mytorch_linear.weight.name)
         assert assertions_all(mytorch_dW, pytorch_dW, 'dW'), "Gradient Check Failed"
 
         try:

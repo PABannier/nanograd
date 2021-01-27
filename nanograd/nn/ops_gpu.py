@@ -311,7 +311,7 @@ def pad2d_op(ctx, queue, a, pad, im_height, im_width):
                np.int32(im_height), np.int32(im_width), np.int32(pad))
     return ret
 
-def conv1d_op(ctx, queue, a, weight, bias, stride, output_length):
+def conv1d_op(ctx, queue, a, weight, stride, output_length):
     batch_size, stride = np.int32(a.shape[0]), np.int32(stride)
     output_length = np.int32(output_length)
     num_filters, in_channel = np.int32(weight.shape[0]), np.int32(weight.shape[1])
@@ -320,7 +320,7 @@ def conv1d_op(ctx, queue, a, weight, bias, stride, output_length):
 
     ret = GPUBuffer(ctx, (batch_size, num_filters, output_length))
     prgm = cl.Program(ctx, """
-        __kernel void conv1d(__global const float *input, __global const float *weight, __global const float *bias,
+        __kernel void conv1d(__global const float *input, __global const float *weight,
                              __global float *output, const int kernel_length, const int num_filters, const int in_channel,
                              const int out_length, const int length, const int stride) {
             int batch_id = get_global_id(0);
@@ -341,12 +341,12 @@ def conv1d_op(ctx, queue, a, weight, bias, stride, output_length):
         }
     """).build()
 
-    prgm.conv1d(queue, [batch_size, num_filters, output_length], None, a.cl, weight.cl, bias.cl, 
+    prgm.conv1d(queue, [batch_size, num_filters, output_length], None, a.cl, weight.cl, 
                 ret.cl, kernel_length, num_filters, in_channel, np.int32(output_length), length, 
                 stride)
     return ret
 
-def conv2d_op(ctx, queue, a, weight, bias, stride, output_height, output_width):
+def conv2d_op(ctx, queue, a, weight, stride, output_height, output_width):
     batch_size, stride = np.int32(a.shape[0]), np.int32(stride)
     output_height, output_width = np.int32(output_height), np.int32(output_width)
     num_filters, in_channel = np.int32(weight.shape[0]), np.int32(weight.shape[1])
@@ -355,7 +355,7 @@ def conv2d_op(ctx, queue, a, weight, bias, stride, output_height, output_width):
 
     ret = GPUBuffer(ctx, (batch_size, num_filters, output_height, output_width))
     prgm = cl.Program(ctx, """
-        __kernel void conv2d(__global const float *input, __global const float *weight, __global const float *bias,
+        __kernel void conv2d(__global const float *input, __global const float *weight,
                              __global float *output, const int kernel_height, const int kernel_width, const int num_filters, 
                              const int in_channel, const int out_height, const int out_width, const int im_height, 
                              const int im_width, const int stride) {
@@ -382,7 +382,7 @@ def conv2d_op(ctx, queue, a, weight, bias, stride, output_height, output_width):
         }
     """).build()
 
-    prgm.conv2d(queue, [batch_size * num_filters, output_height, output_width], None, a.cl, weight.cl, bias.cl,
+    prgm.conv2d(queue, [batch_size * num_filters, output_height, output_width], None, a.cl, weight.cl,
                 ret.cl, kernel_height, kernel_width, num_filters, in_channel, output_height, output_width, im_height,
                 im_width, stride)
     return ret
@@ -454,35 +454,22 @@ def sum_forward(ctx, queue, a, axis, keepdims):
     return reduce_op(ctx, queue, 'out += a', 'out', 
                      a, axis=axis, keepdims=keepdims)
 
-def conv1d_forward(ctx, queue, a, weight, bias, stride, pad):
+def conv1d_forward(ctx, queue, a, weight, stride):
     batch_size, in_channel, length = a.shape
     num_filters, _, kernel_length = weight.shape
-    output_length = get_conv1d_output_size(length, kernel_length, stride, pad)
+    output_length = get_conv1d_output_size(length, kernel_length, stride, 0)
 
-    if pad != 0:
-        a = pad1d_op(ctx, queue, a, pad, length)
-    
-    length += 2 * pad
-
-    out = conv1d_op(ctx, queue, a, weight, bias, stride, output_length)
+    out = conv1d_op(ctx, queue, a, weight, stride, output_length)
     return out
 
-
-def conv2d_forward(ctx, queue, a, weight, bias, stride, pad):
+def conv2d_forward(ctx, queue, a, weight, stride):
     batch_size, in_channel, im_height, im_width = a.shape
     num_filters, _, kernel_height, kernel_width = weight.shape
 
     output_height, output_width = get_conv2d_output_size(im_height, im_width,
-        (kernel_height, kernel_width), stride, pad)
+        (kernel_height, kernel_width), stride, 0)
 
-    if pad != 0:
-        a = pad2d_op(ctx, queue, a, pad, im_height, im_width)
-    
-    im_height += 2 * pad
-    im_width += 2 * pad
-
-    out = conv2d_op(ctx, queue, a, weight, bias, 
-                    stride, output_height, output_width)
+    out = conv2d_op(ctx, queue, a, weight, stride, output_height, output_width)
     return out
 
 # *************************************
@@ -569,10 +556,10 @@ def sum_backward(ctx, queue, grad_output, a, axis):
     shape = [1 if axis is None or i in axis else a.shape[i] for i in range(len(a.shape))]
     return GPUBuffer(ctx, shape, hostbuf=grad_output)
 
-def conv1d_backward(ctx, queue, grad_output, x, weight, bias, stride, pad):
+def conv1d_backward(ctx, queue, grad_output, x, weight, stride):
     raise NotImplementedError
 
-def conv2d_backward(ctx, queue, grad_output, x, weight, bias, stride, pad):
+def conv2d_backward(ctx, queue, grad_output, x, weight, stride):
     batch_size, _, out_height, out_width = grad_output.shape
     num_filters, _, kernel_height, kernel_width = weight.shape
     _, in_channel, im_height, im_width = x.shape
@@ -642,6 +629,4 @@ def conv2d_backward(ctx, queue, grad_output, x, weight, bias, stride, pad):
     prgm_grad_x.conv_backward_x(queue, [batch_size, in_channel], None, *grad_x_args)
     prgm_grad_weight.conv_backward_weight(queue, [num_filters * in_channel, kernel_height, kernel_width], None, *grad_w_args)
 
-    grad_bias = reduce_op(ctx, queue, 'out += a', 'out', grad_output, axis=(0, 2, 3))
-
-    return grad_x, grad_weight, grad_bias
+    return grad_x, grad_weight

@@ -104,18 +104,15 @@ def sigmoid_forward(a):
 def tanh_forward(a):
     return np.tanh(a)
 
-def conv1d_forward(a, weight, bias, stride, pad):
+def conv1d_forward(a, weight, stride):
     N, C, L = a.shape
     F, _, KL = weight.shape
-    OL = get_conv1d_output_size(L, KL, stride, pad)
-
-    L += 2 * pad
-    x_padded = np.pad(a, ((0, 0), (0, 0), (pad, pad)), mode="constant")
+    OL = get_conv1d_output_size(L, KL, stride, 0)
 
     stride_shape = (L, 1, C * L, stride)
     strides = a.data.itemsize * np.array(stride_shape)
     x_strides = np.lib.stride_tricks.as_strided(
-        x=x_padded,
+        x=a,
         strides=strides,
         shape=(C, KL, N, OL),
         writeable=False
@@ -124,25 +121,21 @@ def conv1d_forward(a, weight, bias, stride, pad):
     x_cols = np.ascontiguousarray(x_strides)
     x_cols.shape = (C * KL, N * OL)
 
-    out = weight.reshape(F, -1) @ x_cols + bias.reshape(-1, 1)
+    out = weight.reshape(F, -1) @ x_cols
     out.shape = (F, N, OL)
     return out.transpose(1, 0, 2), x_cols
 
-def conv2d_forward(a, weight, bias, stride, pad):
+def conv2d_forward(a, weight, stride):
     N, C, H, W = a.shape
     F, _, HH, WW = weight.shape
-    OH, OW = get_conv2d_output_size(H, W, (HH, WW), stride, pad)
+    OH, OW = get_conv2d_output_size(H, W, (HH, WW), stride, 0)
 
-    x_padded = np.pad(a, ((0, 0), (0, 0), (pad, pad), (pad, pad)), mode="constant")
-
-    H += 2 * pad
-    W += 2 * pad
     out = np.zeros((N, F, OH, OW))
 
     strides = (H * W, W, 1, C * H * W, stride * W, stride)
     strides = a.itemsize * np.array(strides)
     x_stride = np.lib.stride_tricks.as_strided(
-        x=x_padded,
+        x=a,
         shape=(C, HH, WW, N, OH, OW),
         strides=strides,
         writeable=False
@@ -151,7 +144,7 @@ def conv2d_forward(a, weight, bias, stride, pad):
     x_cols = np.ascontiguousarray(x_stride)
     x_cols.shape = (C * HH * WW, N * OH * OW)
 
-    res = weight.data.reshape(F, -1) @ x_cols + bias.data.reshape(-1, 1)
+    res = weight.data.reshape(F, -1) @ x_cols
     res.shape = (F, N, OH, OW)
     return res.transpose(1, 0, 2, 3), x_cols
 
@@ -228,21 +221,19 @@ def sum_backward(grad_output, a, axis):
     shape = [1 if axis is None or i in axis else a.shape[i] for i in range(len(a.shape))]
     return grad_output.reshape(shape) + np.zeros_like(a) # Useful for broadcasting
 
-def conv1d_backward(a, weight, bias, stride, pad):
+def conv1d_backward(a, weight, stride):
     raise NotImplementedError
 
-def conv2d_backward(grad_output, x, weight, bias, x_cols, stride, pad):
+def conv2d_backward(grad_output, x, weight, x_cols, stride):
     N, C, H, W = x.shape
     F, _, HH, WW = weight.shape
     _, _,  OH, OW = grad_output.shape
-
-    grad_bias = np.sum(grad_output, axis=(0, 2, 3))
 
     grad_out_reshaped = grad_output.transpose(1, 2, 3, 0).reshape(F, -1)
     grad_weight = (grad_out_reshaped @ x_cols.T).reshape(weight.shape)
         
     grad_x_cols = weight.data.reshape(F, -1).T @ grad_out_reshaped
     grad_x_cols.shape = (C, HH, WW, N, OH, OW)
-    grad_x = col2im(grad_x_cols, x.shape, HH, WW, pad, stride) # Needs to be optimized
+    grad_x = col2im(grad_x_cols, x.shape, HH, WW, 0, stride) # Needs to be optimized
 
-    return grad_x, grad_weight, grad_bias
+    return grad_x, grad_weight

@@ -395,13 +395,17 @@ class Tensor:
         r"""AvgPooling2d operation"""
         return self._pool2d(*kernel_size).mean(axis=(3, 5))
 
-    def conv1d(self, weight, bias, stride, padding):
-        return F.Conv1d.apply(self, weight, bias, stride, padding,
-                              cl_ctx=cl_ctx, cl_queue=cl_queue)
+    def pad1d(self, pad:tuple):
+        return self[:, :, -pad[0]:self.shape[2]+pad[1]]
+
+    def pad2d(self, pad:tuple):
+        return self[:, :, -pad[2]:self.shape[2]+pad[3], -pad[0]:self.shape[3]+pad[1]]
+
+    def conv1d(self, weight, stride):
+        return F.Conv1d.apply(self, weight, stride, cl_ctx=cl_ctx, cl_queue=cl_queue)
     
-    def conv2d(self, weight, bias, stride, padding):
-        return F.Conv2d.apply(self, weight, bias, stride, padding, 
-                              cl_ctx=cl_ctx, cl_queue=cl_queue)
+    def conv2d(self, weight, stride):
+        return F.Conv2d.apply(self, weight, stride, cl_ctx=cl_ctx, cl_queue=cl_queue)
 
     # ****************************************
     # ************ Visualization *************

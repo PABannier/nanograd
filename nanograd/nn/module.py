@@ -4,6 +4,8 @@ import nanograd.nn.functional as F
 
 import numpy as np
 
+from typing import Union
+
 
 def init_weights(shape:tuple, weight_initialization:str, fan_mode:str="fan_in", **kwargs) -> Tensor:
     assert type(shape) == tuple, f"Shape must be a tuple. Got {type(shape).__name__}."
@@ -250,18 +252,14 @@ class BatchNorm1d(Module):
         super().__init__()
         self.num_features = num_features
 
-        self.eps = Tensor([eps], is_parameter=False)
-        self.momentum = Tensor([momentum], is_parameter=False)
+        self.eps = Tensor(eps, is_parameter=False)
+        self.momentum = Tensor(momentum, is_parameter=False)
 
-        self.gamma = Tensor.ones((self.num_features, ), 
-                                    requires_grad=True, is_parameter=True, name="bn_gamma")
-        self.beta = Tensor.zeros((self.num_features, ), 
-                                    requires_grad=True, is_parameter=True, name="bn_beta")
+        self.gamma = Tensor.ones((self.num_features,), requires_grad=True, is_parameter=True, name="bn_gamma")
+        self.beta = Tensor.zeros((self.num_features,), requires_grad=True, is_parameter=True, name="bn_beta")
         
-        self.running_mean = Tensor.zeros((self.num_features,), 
-                                   requires_grad=False, is_parameter=False, name="bn_running_mean")
-        self.running_var = Tensor.ones((self.num_features,), 
-                                  requires_grad=False, is_parameter=False, name="bn_running_var")
+        self.running_mean = Tensor.zeros((self.num_features,), requires_grad=False, is_parameter=False, name="bn_running_mean")
+        self.running_var = Tensor.ones((self.num_features,), requires_grad=False, is_parameter=False, name="bn_running_var")
 
     def forward(self, x:Tensor) -> Tensor:
         r"""
@@ -271,9 +269,9 @@ class BatchNorm1d(Module):
                 Tensor: (batch_size, num_features)
         """
         if self.is_train == True:
-            batch_mean = x.mean(0).unsqueeze(1).T()
-            batch_var = ((x - batch_mean) ** 2).mean(0).unsqueeze(1).T()
-            batch_empirical_var = ((x - batch_mean) ** 2).sum(0).unsqueeze(1).T() / (x.shape[0] - 1)
+            batch_mean = x.mean(0)
+            batch_var = ((x - batch_mean.reshape(shape=[1, -1])) ** 2).mean(0)
+            batch_empirical_var = ((x - batch_mean.reshape(shape=[1, -1])) ** 2).sum(0) / (x.shape[0] - 1)
 
             self.running_mean = (1 - self.momentum) * self.running_mean + self.momentum * batch_mean
             self.running_var = (1 - self.momentum) * self.running_var + self.momentum * batch_empirical_var
@@ -283,8 +281,8 @@ class BatchNorm1d(Module):
             return self._normalize(x, self.running_mean, self.running_var)
         
     def _normalize(self, x, mean, var):
-        x_hat = (x - mean) / (var + self.eps).sqrt()
-        out = self.gamma.unsqueeze(1).T() * x_hat + self.beta.unsqueeze(1).T()
+        x_hat = (x - mean.reshape(shape=[1, -1])) / (var + self.eps).sqrt().reshape(shape=[1, -1])
+        out = self.gamma.reshape(shape=[1, -1]) * x_hat + self.beta.reshape(shape=[1, -1])
         out.name = "bn_1d_res"
         return out
 
@@ -324,10 +322,10 @@ class BatchNorm2d(Module):
             Returns:
                 Tensor: (batch_size, num_features)
         """
-        if self.is_train == True:  # (16, 10, 8, 8)
-            batch_mean = x.mean(axis=(0, 2, 3)) # (10, )
-            batch_var = ((x - batch_mean.reshape(shape=[1, -1, 1, 1])) ** 2).mean(axis=(0, 2, 3)) # (10, )
-            batch_empirical_var = ((x - batch_mean.reshape(shape=[1, -1, 1, 1])) ** 2).sum(axis=(0, 2, 3)) / (x.shape[0] - 1) # (10, )
+        if self.is_train == True: 
+            batch_mean = x.mean(axis=(0, 2, 3)) 
+            batch_var = ((x - batch_mean.reshape(shape=[1, -1, 1, 1])) ** 2).mean(axis=(0, 2, 3)) 
+            batch_empirical_var = ((x - batch_mean.reshape(shape=[1, -1, 1, 1])) ** 2).sum(axis=(0, 2, 3)) / (x.shape[0] - 1) 
 
             self.running_mean = (1 - self.momentum) * self.running_mean + self.momentum * batch_mean
             self.running_var = (1 - self.momentum) * self.running_var + self.momentum * batch_empirical_var
@@ -347,7 +345,6 @@ class BatchNorm2d(Module):
         """
         x_hat = (x - mean.reshape(shape=[1, -1, 1, 1])) / (var + self.eps).sqrt().reshape(shape=[1, -1, 1, 1])
         out = self.gamma.reshape(shape=[1, -1, 1, 1]) * x_hat + self.beta.reshape(shape=[1, -1, 1, 1])
-
         out.name = 'bn_2d_res'
         return out
 
@@ -362,20 +359,27 @@ class Conv1d(Module):
             kernel_size (int): edge length of the kernel (i.e. 3x3 kernel <-> kernel_size = 3)
             stride (int): Stride of the convolution (filter)
     """
-    def __init__(self, in_channel:int, out_channel:int, kernel_size:int,
-                 stride:int=1, padding:int=0, weight_initialization:str="kaiming_normal") -> None:
+    def __init__(self, in_channel:int, out_channel:int, kernel_size:int, stride:int=1, 
+                 padding:Union[tuple, int]=(0, 0), weight_initialization:str="kaiming_normal",
+                 with_bias:bool=True) -> None:
         super().__init__()
+        assert isinstance(padding, (tuple, int)), 'Wrong padding type. Must be integer or tuple of integers'
+        if isinstance(padding, (int)): padding = (padding, padding)
+        assert len(padding) == 2, 'Wrong padding dimensions'
+
         self.in_channel, self.out_channel = in_channel, out_channel
         self.stride, self.padding = stride, padding
         self.kernel_size = kernel_size
         self.weight_initialization = weight_initialization
+        self.with_bias = with_bias
 
         shape = (self.out_channel, self.in_channel, self.kernel_size)
         self.weight = init_weights(shape, self.weight_initialization, 
                                    requires_grad=True, is_parameter=True, name="conv_weight_1d")
 
-        self.bias = Tensor.zeros(out_channel, requires_grad=True, 
-                                 is_parameter=True, name="conv_bias_1d")
+        if self.with_bias:
+            self.bias = Tensor.zeros(out_channel, requires_grad=True, 
+                                     is_parameter=True, name="conv_bias_1d")
 
     def forward(self, x:Tensor) -> Tensor:
         """
@@ -384,7 +388,11 @@ class Conv1d(Module):
         Returns:
             Tensor: (batch_size, out_channel, output_size)
         """
-        return x.conv1d(self.weight, self.bias, self.stride, self.padding)
+        x_padded = x.pad1d(self.padding)
+
+        if self.with_bias:
+            return x_padded.conv1d(self.weight, self.stride) + self.bias.reshape(shape=[1, -1, 1])
+        return x_padded.conv1d(self.weight, self.stride)
 
 
 class Conv2d(Module):
@@ -398,20 +406,27 @@ class Conv2d(Module):
             stride (int): stride of the convolution (filter)
             padding (int): padding for the convolution
     """
-    def __init__(self, in_channel:int, out_channel:int, kernel_size:int,
-                 stride:int=1, padding:int=0, weight_initialization:str="kaiming_normal") -> None:
+    def __init__(self, in_channel:int, out_channel:int, kernel_size:int, stride:int=1, 
+                 padding:tuple=(0, 0, 0, 0), weight_initialization:str="kaiming_normal",
+                 with_bias:bool=True) -> None:
         super().__init__()
+        assert isinstance(padding, (tuple, int)), 'Wrong padding type. Must be integer or tuple of integers'
+        if isinstance(padding, (int)): padding = (padding, padding, padding, padding)
+        assert len(padding) == 4, 'Wrong padding dimensions'
         self.in_channel, self.out_channel = in_channel, out_channel
         self.kernel_size = kernel_size if isinstance(kernel_size, tuple) else (kernel_size, kernel_size)
         self.stride, self.padding = stride, padding
         self.weight_initialization = weight_initialization
+        self.with_bias = with_bias
 
         shape = (self.out_channel, self.in_channel, *self.kernel_size)
 
         self.weight = init_weights(shape, self.weight_initialization, requires_grad=True, 
                                    is_parameter=True, name="conv_weight_2d")
-        self.bias = Tensor.zeros(self.out_channel, requires_grad=True, 
-                                 is_parameter=True, name="conv_bias_2d")
+        
+        if self.with_bias:
+            self.bias = Tensor.zeros(self.out_channel, requires_grad=True, 
+                                    is_parameter=True, name="conv_bias_2d")
     
     def forward(self, x:Tensor) -> Tensor:
         """
@@ -420,7 +435,10 @@ class Conv2d(Module):
             Returns:
                 Tensor: (batch_size, out_channel, output_dim1, output_dim2)
         """
-        return x.conv2d(self.weight, self.bias, self.stride, self.padding)
+        x_padded = x.pad2d(self.padding)
+        if self.with_bias:
+            return x_padded.conv2d(self.weight, self.stride) + self.bias.reshape(shape=[1, -1, 1, 1])
+        return x_padded.conv2d(self.weight, self.stride)
 
 
 class MaxPool2d(Module):
@@ -715,3 +733,26 @@ class Swish(Module):
                 Tensor: (batch_size, num_features)
         """
         return x * (self.beta * x).sigmoid()
+
+
+class Mish(Module):
+    r"""
+        Mish Activation Layer
+
+        Applies a Mish activation function to the input
+
+        Inherits from:
+            Module (nn.module.Module)
+    """
+    def __init__(self) -> None:
+        super().__init__()
+
+    def forward(self, x:Tensor) -> Tensor:
+        """
+            Args:
+                x (Tensor): (batch_size, num_features)
+            
+            Returns:
+                Tensor: (batch_size, num_features)
+        """
+        return x * (1 + x.exp()).log().tanh()

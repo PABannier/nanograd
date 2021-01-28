@@ -1,6 +1,6 @@
 import numpy as np
-from nanograd.nn.conv_ops import get_conv1d_output_size, get_conv2d_output_size
-from nanograd.nn.conv_ops import col2im
+from nanograd.nn.conv_ops import (get_conv1d_output_size, get_conv2d_output_size, 
+                                  get_im2col_indices, col2im)
 
 # *************************************
 # ************** Helpers **************
@@ -221,8 +221,19 @@ def sum_backward(grad_output, a, axis):
     shape = [1 if axis is None or i in axis else a.shape[i] for i in range(len(a.shape))]
     return grad_output.reshape(shape) + np.zeros_like(a) # Useful for broadcasting
 
-def conv1d_backward(a, weight, stride):
-    raise NotImplementedError
+def conv1d_backward(grad_output, a, x_cols, weight, stride):
+    N, C, L = a.shape
+    F, _, KL = weight.shape
+    _, _,  OL = grad_output.shape
+
+    grad_out_reshaped = grad_output.data.transpose(1, 2, 0).reshape(F, -1)
+    grad_weight = (grad_out_reshaped @ x_cols.T).reshape(weight.shape)
+
+    grad_x_cols = weight.data.reshape(F, -1).T @ grad_out_reshaped
+    grad_x_cols.shape = (C, KL, N, OL)
+    grad_x = col2im(grad_x_cols, x.shape, 1, KL, 0, stride)
+
+    return grad_x, grad_weight
 
 def conv2d_backward(grad_output, x, weight, x_cols, stride):
     N, C, H, W = x.shape

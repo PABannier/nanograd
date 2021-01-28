@@ -146,10 +146,12 @@ def get_same_pytorch_criterion(criterion):
     """
     if criterion is None:
         return None
+    elif criterion is nnn.MSELoss():
+        return nn.MSELoss()
     return nn.CrossEntropyLoss()
 
 
-def generate_dataset_for_mytorch_model(model, batch_size):
+def generate_dataset_for_mytorch_model_linear(model, batch_size):
     """
     Generates a fake dataset to test on.
 
@@ -163,6 +165,26 @@ def generate_dataset_for_mytorch_model(model, batch_size):
     x = np.random.randn(batch_size, in_features).astype(np.float32)
     y = np.random.randint(out_features, size=(batch_size,)).astype(np.float32)
     return x, y
+
+
+def generate_dataset_for_mytorch_model_conv(model, batch_size, dim="1d"):
+    """
+    Generates a fake dataset to test on CNN.
+
+    Args:
+        dim (str): 1d or 2d
+    Returns x: ndarray (batch_size, in_channel, *i_size),
+            y: ndarray (batch_size, )
+    """
+    in_channel = 3
+    if dim == "1d":
+        x = np.random.randn(batch_size, in_channel, 5).astype(np.float32)
+        y = np.random.randint(4, size=(batch_size,)).astype(np.float32)
+        return x, y
+    else:
+        x = np.random.randn(batch_size, in_channel, 5, 5).astype(np.float32)
+        y = np.random.randint(4, size=(batch_size,)).astype(np.float32)
+        return x, y
 
 
 def forward_(mytorch_model, mytorch_criterion, pytorch_model,
@@ -240,11 +262,11 @@ def check_gradients(mytorch_x, pytorch_x, mytorch_model, pytorch_model):
 
     mytorch_linear_layers = get_mytorch_linear_layers(mytorch_model)
     pytorch_linear_layers = get_pytorch_linear_layers(pytorch_model)
+
     for mytorch_linear, pytorch_linear in zip(mytorch_linear_layers, pytorch_linear_layers):
         pytorch_dW = pytorch_linear.weight.grad.detach().numpy()
         mytorch_dW = mytorch_linear.weight.grad.data
-        print(mytorch_linear.weight.shape)
-        print(mytorch_linear.weight.name)
+
         assert assertions_all(mytorch_dW, pytorch_dW, 'dW'), "Gradient Check Failed"
 
         try:
@@ -330,7 +352,7 @@ def check_model_param_settings(model):
     # Iterate through layers and perform checks for each layer
     for idx, l in enumerate(model.layers):
         # Check that weights and biases of linear and conv1d layers are correctly configured
-        if type(l).__name__ in ["Linear", "Conv1d"]:
+        if type(l).__name__ in ["Linear", "Conv1d", "Conv2d"]:
             try:
                 check_param_tensor(l.weight)
             except Exception:
@@ -352,7 +374,7 @@ def check_model_param_settings(model):
                 return False
         
         # Check batchnorm is correct
-        elif type(l).__name__ == "BatchNorm1d":
+        elif type(l).__name__ in ["BatchNorm1d", "BatchNorm2d"]:
             try:
                 check_param_tensor(l.gamma)
             except Exception:
@@ -385,20 +407,25 @@ def check_model_param_settings(model):
     return True
 
 
-def forward_test(model, criterion=None, batch_size=(2,5), test_on_gpu=False):
+def forward_test(model, criterion=None, batch_size=(2,5), test_on_gpu=False, dim="1d", linear=True):
     """
         Tests forward, printing whether a mismatch occurs in forward.
     """
     pytorch_model = get_same_pytorch_mlp(model)
     batch_size = np.random.randint(*batch_size) if type(batch_size) == tuple\
         else batch_size
-    x, y = generate_dataset_for_mytorch_model(model, batch_size)
+
+    if linear:
+        x, y = generate_dataset_for_mytorch_model_linear(model, batch_size)
+    else:
+        x, y = generate_dataset_for_mytorch_model_conv(model, 5, dim=dim)
+
     pytorch_criterion = get_same_pytorch_criterion(criterion)
 
     forward_(model, criterion, pytorch_model, pytorch_criterion, x, y, test_on_gpu=test_on_gpu)
 
 
-def forward_backward_test(model, criterion=None, batch_size=(2,5), test_on_gpu=False):
+def forward_backward_test(model, criterion=None, batch_size=(2,5), test_on_gpu=False, dim="1d", linear=True):
     """
         Tests forward and back, printing whether a mismatch occurs in forward or
         backwards.
@@ -406,7 +433,12 @@ def forward_backward_test(model, criterion=None, batch_size=(2,5), test_on_gpu=F
     pytorch_model = get_same_pytorch_mlp(model)
     batch_size = np.random.randint(*batch_size) if type(batch_size) == tuple\
         else batch_size
-    x, y = generate_dataset_for_mytorch_model(model, batch_size)
+    
+    if linear:
+        x, y = generate_dataset_for_mytorch_model_linear(model, batch_size)
+    else:
+        x, y = generate_dataset_for_mytorch_model_conv(model, batch_size, dim=dim)
+    
     pytorch_criterion = get_same_pytorch_criterion(criterion)
 
     (mx, my, px, py) = forward_(model, criterion, pytorch_model,
@@ -426,7 +458,7 @@ def step_test(model, optimizer, train_steps, eval_steps,
     pytorch_criterion = get_same_pytorch_criterion(criterion)
     batch_size = np.random.randint(*batch_size) if type(batch_size) == tuple\
         else batch_size
-    x, y = generate_dataset_for_mytorch_model(model, batch_size)
+    x, y = generate_dataset_for_mytorch_model_linear(model, batch_size)
 
     model.train()
     pytorch_model.train()

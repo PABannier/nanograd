@@ -5,38 +5,34 @@ def get_conv1d_output_size(input_length:int,
                            kernel_size:int, 
                            stride:int, 
                            padding:int) -> int:
-    r"""
-        Gets the size of a Conv1d output.
+    """Computes the output size of a 1d convolution.
 
-        Args:
-            input_length (int): Length of the sequence
-            kernel_size (int): Size of the kernel
-            stride (int): Stride of the convolution
-            padding (int): Zero-padding added to both sides of the input
-            dilation (int): Spacing between kernel elements
+    Args:
+        input_length (int): Length of the sequence
+        kernel_size (int): Spatial size of the kernel
+        stride (int): Stride of the convolution
+        padding (int): Spacing between kernel elements
 
-        Returns:
-            int: size of the output as an int
+    Returns:
+        int: Output size
     """
     input_length += 2 * padding
     return int((input_length - kernel_size) // stride + 1)
 
-
 def get_conv2d_output_size(input_height:int, input_width:int, 
                            kernel_size:int, stride:int, 
                            padding:int) -> tuple:
-    r"""
-        Gets the size of a Conv2d output.
+    """Computs the output size of a 2d convolution.
 
-        Args:
-            input_height (int): Height of the input to the layer
-            input_width (int): Width of the input to the layer
-            kernel_size (tuple): Size of the kernel (if int the kernel is square)
-            stride (int): Stride of the convolution
-            padding (int): Zero-padding added to both sides of the input
+    Args:
+        input_height (int): Height of the input tensor
+        input_width (int): Width of the input tensor
+        kernel_size (int): Square size of the kernel
+        stride (int): Stride of te convolution
+        padding (int): zero-padding added to both sides of the input
 
-        Returns:
-            int: size of the output as a tuple
+    Returns:
+        tuple: output height and output width
     """
     input_height += 2 * padding
     input_width += 2 * padding
@@ -45,21 +41,20 @@ def get_conv2d_output_size(input_height:int, input_width:int,
     output_width = (input_width - kernel_size[1]) // stride + 1
     return int(output_height), int(output_width)
 
-
-def get_im2col_indices(x_shape:int, field_height:int, 
+def get_im2col_indices(x_shape:tuple, field_height:int, 
                        field_width:int, pad:int, stride:int) -> tuple:
-    r"""
-        Args:
-            x_shape (tuple): shape of the signal
-            field_height (int): height of the field (kernel or pool)
-            field_width (int): width of the field (kernel or pool)
-            padding (int): padding
-            stride (int): stride of the operation
-            out_height (int): output height of the operation
-            out_width (int): output width of the operation
-        
-        Returns:
-            k (int), i (int), j (int)
+    """Performs a im2col transformation for fast backward passes in 2d
+       convolution layer
+
+    Args:
+        x_shape (int): Shape of the input tensor
+        field_height (int): Height of the kernel
+        field_width (int): Width of the kernel
+        pad (int): Amount of zero-padding applied in the convolution
+        stride (int): Stride of the convolution
+
+    Returns:
+        tuple: indices for im2col
     """
     N, C, H, W = x_shape
     assert (H + 2 * pad - field_height) % stride == 0
@@ -78,20 +73,23 @@ def get_im2col_indices(x_shape:int, field_height:int,
 
     return (k, i, j)
 
-
 def col2im(cols:np.ndarray, x_shape:tuple, field_height:int, 
            field_width:int, padding:int, stride:int) -> np.ndarray:
-    r"""
-        Performs col2im transform
+    """Performs a col2im transformation for fast backward passes in 2d
 
-        Args:
-            x (np.ndarray): column matrix
-            x_shape (tuple): signal shape
-            field_height (int): height of the operation (kernel)
-            field_width (int): width of the operation (kernel)
-            padding (int): padding before the operation
-            stride (int): stride of the operator
+
+    Args:
+        cols (np.ndarray): Input array transformed using im2col
+        x_shape (tuple): Shape of the input
+        field_height (int): Height of the kernel
+        field_width (int): Width of the kernel
+        padding (int): Amount of zero-padding applied in the convolution
+        stride (int): Stride of the convolution
+
+    Returns:
+        np.ndarray: image transformed
     """
+
     N, C, H, W = x_shape
     H_padded, W_padded = H + 2 * padding, W + 2 * padding
     x_padded = np.zeros((N, C, H_padded, W_padded), dtype=cols.dtype)
@@ -99,7 +97,7 @@ def col2im(cols:np.ndarray, x_shape:tuple, field_height:int,
                                  stride)
     cols_reshaped = cols.reshape(C * field_height * field_width, -1, N)
     cols_reshaped = cols_reshaped.transpose(2, 0, 1)
-    np.add.at(x_padded, (slice(None), k, i, j), cols_reshaped) # Very slow
+    np.add.at(x_padded, (slice(None), k, i, j), cols_reshaped)
     if padding == 0:
         return x_padded
     return x_padded[:, :, padding:-padding, padding:-padding]

@@ -10,16 +10,15 @@ from nanograd.nn.conv_ops import (get_conv1d_output_size, get_conv2d_output_size
 
 
 def cross_entropy(predicted:Tensor, target:Tensor) -> Tensor:
-    r"""
-        Calculates Cross Entropy Loss between logits and true labels.
-        Used in the CrossEntropy module.
+    """Calculates Cross Entropy Loss between logits and true labels.
+       Used in the CrossEntropy module
 
-        Args:
-            predicted (Tensor): (batch_size, num_classes) logits
-            target (Tensor): (batch_size,) true labels
+    Args:
+        predicted (Tensor): Logits
+        target (Tensor): Target classes
 
-        Returns:
-            Tensor: the loss as a float, in a tensor of shape ()
+    Returns:
+        Tensor: Loss in a Tensor of shape ()
     """
     batch_size, num_classes = predicted.shape
     labels = target.one_hot(num_classes)
@@ -731,23 +730,15 @@ class Conv1d(Function):
     @staticmethod
     def backward(ctx, grad_output):
         x, weight = ctx.saved_tensors
-        x_cols = ctx.x_cols
         stride = ctx.stride
 
-        N, C, L = x.shape
-        F, _, KL = weight.shape
-        _, _,  OL = grad_output.shape
+        if grad_output.device == Device.CPU:
+            x_cols = ctx.x_cols
+            grad_x, grad_weight = ops_cpu.conv1d_backward(grad_output.data, x.data, x_cols, weight.data, stride)
+        else:
+            raise NotImplementedError
 
-        grad_out_reshaped = grad_output.data.transpose(1, 2, 0).reshape(F, -1)
-        grad_weight = (grad_out_reshaped @ x_cols.T).reshape(weight.shape)
-        grad_weight = Tensor(grad_weight)
-
-        grad_x_cols = weight.data.reshape(F, -1).T @ grad_out_reshaped
-        grad_x_cols.shape = (C, KL, N, OL)
-        grad_x = col2im(grad_x_cols, x.shape, 1, KL, 0, stride)
-        grad_x = Tensor(grad_x)
-
-        return grad_x, grad_weight
+        return Tensor(grad_x, device=grad_output.device), Tensor(grad_weight, device=grad_output.device)
         
 
 class Conv2d(Function):

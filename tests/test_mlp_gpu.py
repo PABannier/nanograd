@@ -104,14 +104,11 @@ def test_conv1d_forward():
     forward_test(model, test_on_gpu=True, linear=False, dim="1d")
     check_model_param_settings(model)
 
-"""
-NOT YET IMPLEMENTED
 def test_conv1d_backward():
     np.random.seed(SEED)
     model = nnn.Sequential(nnn.Conv1d(3, 10, 3, 1, 3), nnn.Flatten(), nnn.ReLU())
     forward_backward_test(model, test_on_gpu=True, linear=False, dim="1d")
     check_model_param_settings(model)
-"""
 
 def test_conv2d_forward():
     np.random.seed(SEED)

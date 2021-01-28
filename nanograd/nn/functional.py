@@ -736,7 +736,8 @@ class Conv1d(Function):
             x_cols = ctx.x_cols
             grad_x, grad_weight = ops_cpu.conv1d_backward(grad_output.data, x.data, x_cols, weight.data, stride)
         else:
-            raise NotImplementedError
+            grad_x, grad_weight = ops_gpu.conv1d_backward(ctx.cl_ctx, ctx.cl_queue, grad_output.data, 
+                                                          x.data, weight.data, stride)
 
         return Tensor(grad_x, device=grad_output.device), Tensor(grad_weight, device=grad_output.device)
         

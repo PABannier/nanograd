@@ -557,7 +557,75 @@ def sum_backward(ctx, queue, grad_output, a, axis):
     return GPUBuffer(ctx, shape, hostbuf=grad_output)
 
 def conv1d_backward(ctx, queue, grad_output, x, weight, stride):
-    raise NotImplementedError
+    batch_size, _, out_length = grad_output.shape
+    num_filters, _, kernel_length = weight.shape
+    _, in_channel, in_length = x.shape
+
+    grad_x = GPUBuffer(ctx, shape=x.shape)
+    grad_weight = GPUBuffer(ctx, shape=weight.shape)
+
+    prgm_grad_x = cl.Program(ctx, """
+        __kernel void conv_backward_x(__global const float *weight, __global const float *grad_output, __global float *grad_x, const int kernel_length,
+                                      const int num_filters, const int in_channel, const int out_length, const int in_length, const int stride,
+                                      const int batch_size) {
+
+            int batch = get_global_id(0);
+            int channel = get_global_id(1);
+
+            for(int x = 0; x < out_length; x++) {
+                for(int kx = 0; kx < kernel_length; kx++) {
+
+                    float sum = 0.0;
+
+                    for(int f = 0; f < num_filters; f++) {
+                        sum += grad_output[batch * num_filters * out_length + f * out_length + x] * \
+                            weight[f * in_channel * kernel_length + channel * kernel_length + kx];
+                    } 
+
+                    grad_x[batch * in_channel * in_length + channel * in_length + x * stride + kx] += sum;
+                }
+            }
+
+
+        }
+    """).build()
+
+    prgm_grad_weight = cl.Program(ctx, """
+        __kernel void conv_backward_weight(__global const float *x_tensor, __global const float *grad_output, __global float *grad_weight,
+                                           const int kernel_length, const int num_filters, const int in_channel, const int out_length, 
+                                           const int in_length, const int stride, const int batch_size) {
+
+            int filter = (get_global_id(0) / in_channel) % num_filters;
+            int channel = get_global_id(0) % in_channel;
+            int col = get_global_id(1);
+
+            float sum = 0.0;
+
+            for(int x = 0; x < out_length; x++) {
+                for(int b = 0; b < batch_size; b++) {
+                    sum += grad_output[b * num_filters * out_length + filter * out_length + x] * \
+                        x_tensor[b * in_channel * in_length + channel * in_length + x * stride + col];
+                }
+            }
+            grad_weight[get_global_id(0) * kernel_length + col] = sum;
+
+        }
+    """).build()
+
+    grad_x_args = (weight.cl, grad_output.cl, grad_x.cl, np.int32(kernel_length), np.int32(num_filters), 
+                   np.int32(in_channel), np.int32(out_length), np.int32(in_length), np.int32(stride), 
+                   np.int32(batch_size))
+    
+    grad_w_args = (x.cl, grad_output.cl, grad_weight.cl, np.int32(kernel_length), np.int32(num_filters), 
+                   np.int32(in_channel), np.int32(out_length), np.int32(in_length), np.int32(stride), 
+                   np.int32(batch_size))
+
+    prgm_grad_x.conv_backward_x(queue, [batch_size, in_channel], None, *grad_x_args)
+    prgm_grad_weight.conv_backward_weight(queue, [num_filters * in_channel, kernel_length], None, *grad_w_args)
+
+    return grad_x, grad_weight
+    
+    
 
 def conv2d_backward(ctx, queue, grad_output, x, weight, stride):
     batch_size, _, out_height, out_width = grad_output.shape

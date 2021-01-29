@@ -4,7 +4,7 @@ from nanograd.device import Device
 
 
 def backward(grad_fn, grad_of_outputs):
-    r"""
+    """
         Recursive DFS that traverses comp graph, handing back gradients as it goes.
 
         Args:
@@ -25,7 +25,7 @@ def backward(grad_fn, grad_of_outputs):
                 backward(functions[i], gradients[i])
 
 class Function:
-    r"""
+    """
         Superclass for linking nodes to the computational graph.
         Operations in `functional.py` should inherit from this
     """
@@ -39,7 +39,7 @@ class Function:
 
     @classmethod
     def apply(cls, *args, **kwargs):
-        r"""
+        """
             Runs forward of subclass and links node to the comp graph.
 
             Args:
@@ -89,7 +89,7 @@ class Function:
 
 
 class AccumulateGrad:
-    r"""
+    """
         Represents node where gradient must be accumulated.
 
         Args:
@@ -103,7 +103,7 @@ class AccumulateGrad:
         self.cl_ctx, self.cl_queue = cl_ctx, cl_queue
 
     def apply(self, arg):
-        r"""
+        """
             Accumulates gradient provided.
 
             Args:
@@ -120,7 +120,7 @@ class AccumulateGrad:
 
 
 class ContextManager:
-    r"""
+    """
         Used to pass variables between a function's `.forward()` and `.backward()`.
         (Argument "ctx" in these functions)
 
@@ -149,7 +149,7 @@ class ContextManager:
 
 
 class BackwardFunction:
-    r"""
+    """
         Representing an intermediate node where gradient must be passed.
         Stored on output tensor of operation during `Function.apply()`
 
@@ -168,7 +168,7 @@ class BackwardFunction:
         self.function_name = "BackwardFunction"
 
     def apply(self, *args):
-        r"""
+        """
             Generates gradient by running the operation's `.backward()`.
 
             Args:

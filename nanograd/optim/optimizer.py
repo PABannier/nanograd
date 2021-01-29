@@ -3,11 +3,9 @@ from nanograd.tensor import Tensor
 
 
 class Optimizer:
-    r"""
-        Base class for optimizers
-    """
+    """Base class for optimizers"""
     def __init__(self, params:list):
-        r"""
+        """
             Initializer of the Optimizer class
 
             Args:
@@ -17,15 +15,15 @@ class Optimizer:
         self.state = []
     
     def step(self):
-        r"""Update rule"""
+        """Update rule"""
         raise NotImplementedError("Should be implemented in subclasses of Optimizer")
 
     def reset(self):
-        r"""Resets all hyperparameters"""
+        """Resets all hyperparameters"""
         raise NotImplementedError("Should be implemented in subclasses of Optimizer")
 
     def zero_grad(self):
-        r"""
+        """
             Resets gradients of the parameters 
             to zero. 
 
@@ -37,16 +35,14 @@ class Optimizer:
 
 
 class SGD(Optimizer):
-    r"""
-        Implementation of Stochastic Gradient Descent (SGD)
+    """Implementation of Stochastic Gradient Descent (SGD)
+    
+        Args:
+            params (list of Tensors): parameters to be updated
+            lr (float): learning rate
+            momentum (float): Nesterov momentum
     """
     def __init__(self, params:list, lr:float=1e-3, momentum:float=0.9) -> None:
-        r"""
-            Args:
-                params (list of Tensors): parameters to be updated
-                lr (float): learning rate
-                momentum (float): Nesterov momentum
-        """
         super().__init__(params)
         self.lr, self.momentum = lr, momentum
         self.momentums = [Tensor.zeros(p.shape) for p in self.params]
@@ -54,7 +50,7 @@ class SGD(Optimizer):
         assert self.momentum >= 0.0, "Momentum can't be negative"
 
     def step(self) -> None:
-        r"""SGD update rule"""
+        """SGD update rule"""
         for param, mom in zip(self.params, self.momentums):
             if param.grad == None:
                 print(param)
@@ -66,18 +62,16 @@ class SGD(Optimizer):
 
 
 class Adam(Optimizer):
-    r"""
-        Implementation of Adam
+    """Implementation of Adam
+    
+        Args:
+            lr (float): learning rate
+            beta1 (float): smoothing factor for first moment of the gradient
+            beta2 (float): smoothing factor for second moment of the gradient
+            eps (float): avoid division by zero
     """
     def __init__(self, params:list, lr:float=1e-3, beta1:float=0.9, 
                  beta2:float=0.999, eps:float=1e-8) -> None:
-        r"""
-            Args:
-                lr (float): learning rate
-                beta1 (float): smoothing factor for first moment of the gradient
-                beta2 (float): smoothing factor for second moment of the gradient
-                eps (float): avoid division by zero
-        """
         super().__init__(params)
         self.lr, self.beta1, self.beta2, self.eps = lr, beta1, beta2, eps
 
@@ -87,7 +81,7 @@ class Adam(Optimizer):
         assert (0 <= beta2) and (beta2 < 1), "Smoothing factor must be in [0,1)"
     
     def step(self) -> None:
-        r"""Adam update rule"""
+        """Adam update rule"""
         self.t += 1
 
         for param, m1, m2 in zip(self.params, self.moments1, self.moments2):
@@ -110,21 +104,18 @@ class Adam(Optimizer):
 
 
 class AdamW(Optimizer):
-    r"""
-        Implementation of AdamW
+    """
+        Implementation of AdamW: Adam with enhanced weight decay
 
-        Adam with enhanced weight decay
+        Args:
+            lr (float): learning rate
+            reg (float): L2-regularization parameter
+            beta1 (float): smoothing factor for first moment of the gradient
+            beta2 (float): smoothing factor for second moment of the gradient
+            eps (float): avoid division by zero
     """
     def __init__(self, params:list, lr:float=1e-3, reg:float=1e-4, 
                  beta1:float=0.9, beta2:float=0.999, eps:float=1e-8) -> None:
-        r"""
-            Args:
-                lr (float): learning rate
-                reg (float): L2-regularization parameter
-                beta1 (float): smoothing factor for first moment of the gradient
-                beta2 (float): smoothing factor for second moment of the gradient
-                eps (float): avoid division by zero
-        """
         super().__init__(params)
         self.lr, self.reg, self.beta1, self.beta2, self.eps = lr, reg, beta1, beta2, eps
 
@@ -134,7 +125,7 @@ class AdamW(Optimizer):
         assert (0 <= beta2) and (beta2 < 1), "Smoothing factor must be in [0,1)"
     
     def step(self) -> None:
-        r"""Adam update rule"""
+        """Adam update rule"""
         self.t += 1
 
         for param, m1, m2 in zip(self.params, self.moments1, self.moments2):

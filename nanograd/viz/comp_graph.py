@@ -2,7 +2,7 @@ from graphviz import Digraph
 
 
 class CompGraphVisualizer:
-    r"""
+    """
         CompGraphVisualizer is the building block object for quick 
         visualization of a computational graph. Nanograd dynamically 
         builds a computational graph and keeps track of the operations 
@@ -21,7 +21,7 @@ class CompGraphVisualizer:
         self.nodes, self.edges = set(), set()
     
     def visualize(self, root, rankdir="LR"):
-        r"""
+        """
             Builds the computational graph and displays it.
 
             Args:
@@ -33,7 +33,7 @@ class CompGraphVisualizer:
         return graph
     
     def _build_trace(self, node):
-        r"""Performs a recursive DFS over the computational graph."""
+        """Performs a recursive depth-first search over the computational graph."""
         if node not in self.nodes:
             self.nodes.add(node)
             for child in node.children:

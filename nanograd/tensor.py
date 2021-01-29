@@ -24,6 +24,14 @@ except ImportError:
 cl_ctx, cl_queue = None, None
 
 def get_gpu_context_and_queue():
+    """
+        If GPU is enabled, get_gpu_context_and_queue populates global variables
+        cl_ctx and cl_queue used for GPU computations. 
+        
+        cl_ctx and cl_queue are PyOpenCL objects used for parallelized computations 
+        on the GPU. More precisely, cl_ctx is expected to be an instance of PyOpenCL 
+        Context and cl_queue is expected to be an instance of PyOpenCL CommandQueue.
+    """
     global cl_ctx, cl_queue
     devices = cl.get_platforms()[0].get_devices(device_type=cl.device_type.GPU)
     if len(devices) == 0:
@@ -33,7 +41,7 @@ def get_gpu_context_and_queue():
 
 
 class Tensor:
-    r"""
+    """
         Tensor is the basic operator object of Nanograd. It is 
         a wrapper class around NumPy array. 
 
@@ -100,22 +108,22 @@ class Tensor:
 
     @classmethod
     def zeros(cls, *shape, **kwargs):
-        r"""Creates a Tensor filled with zeros"""
+        """Creates a Tensor filled with zeros"""
         return cls(np.zeros(*shape), **kwargs)
     
     @classmethod
     def ones(cls, *shape, **kwargs):
-        r"""Creates a Tensor filled with ones"""
+        """Creates a Tensor filled with ones"""
         return cls(np.ones(*shape), **kwargs)
     
     @classmethod
     def arange(cls, *interval, **kwargs):
-        r"""Creates a Tensor filled with values in range"""
+        """Creates a Tensor filled with values in range"""
         return cls(np.arange(*interval), **kwargs)
     
     @classmethod
     def randn(cls, *shape, **kwargs):
-        r"""
+        """
             Creates a Tensor filled with values drawn from the
             standard Gaussian distribution
         """
@@ -123,7 +131,7 @@ class Tensor:
     
     @classmethod
     def normal(cls, loc, scale, *shape, **kwargs):
-        r"""
+        """
             Creates a Tensor filled with values drawn from the
             a custom Gaussian distribution
         """
@@ -131,7 +139,7 @@ class Tensor:
 
     @classmethod
     def randint(cls, low, high, *shape, **kwargs):
-        r"""
+        """
             Creates a Tensor filled with integer values drawn in the
             range between low and high
         """
@@ -139,7 +147,7 @@ class Tensor:
     
     @classmethod
     def eye(cls, dim, **kwargs):
-        r"""
+        """
             Creates a 2-dimensional Tensor (matrix) equal to the
             identity matrix.
         """
@@ -151,7 +159,7 @@ class Tensor:
 
     @staticmethod
     def _move_data(data:Union[np.ndarray, GPUBuffer], device:Device):
-        r"""
+        """
             Moves data to the device specified
 
             Args:
@@ -180,7 +188,7 @@ class Tensor:
         return data
 
     def to(self, device:Device):
-        r"""
+        """
             Moves the Tensor to the specified device 
             
             Args:
@@ -188,7 +196,7 @@ class Tensor:
         """
         self.data, self.device = self._move_data(self.data, device), device
         if self.grad:
-            self.grad.to(device)
+            self.grad.to(device) # Recursive call to move the gradient to specified device
 
     def cpu(self):
         self.to(Device.CPU)
@@ -205,7 +213,7 @@ class Tensor:
     # ****************************************
 
     def backward(self) -> None:
-        r"""
+        """
             Initiates backpropagation.
 
             ..note::
@@ -217,6 +225,7 @@ class Tensor:
         autograd_engine.backward(self.grad_fn, Tensor.ones(self.shape, device=self.device))
     
     def copy(self):
+        """Creates a copy of the tensor"""
         return Tensor(self.data, device=self.device)
 
     # ****************************************
@@ -388,23 +397,60 @@ class Tensor:
         return x_reshaped
     
     def max_pool2d(self, kernel_size:tuple=(2, 2)):
-        r"""MaxPooling2d operation"""
+        """MaxPooling2d operation
+        
+            Args:
+                kernel_size (tuple): Kernel length for pooling operation
+        """
         return self._pool2d(*kernel_size).max(axis=5).max(axis=3)
     
     def avg_pool2d(self, kernel_size:tuple=(2, 2)):
-        r"""AvgPooling2d operation"""
+        """AvgPooling2d operation
+        
+            Args:
+                kernel_size (tuple): Kernel length for pooling operation
+        """
         return self._pool2d(*kernel_size).mean(axis=(3, 5))
 
     def pad1d(self, pad:tuple):
+        """Padding for one-dimensional signal
+
+        Args:
+            pad (tuple): Amount of padding before and after the signal
+
+        Returns:
+            Tensor: Padded signal
+        """
         return self[:, :, -pad[0]:self.shape[2]+pad[1]]
 
     def pad2d(self, pad:tuple):
+        """Padding for two-dimensional images
+
+        Args:
+            pad (tuple): 4-dimensional tuple. Amount of padding to be applied before and
+                         after the signal along 2 dimensions
+
+        Returns:
+            Tensor: Padded signal
+        """
         return self[:, :, -pad[2]:self.shape[2]+pad[3], -pad[0]:self.shape[3]+pad[1]]
 
-    def conv1d(self, weight, stride):
+    def conv1d(self, weight, stride:int):
+        """1d convolution
+        
+        Args:
+            weight (Tensor): Filter weight (out_channel, in_channel, kernel_length)
+            stride (int): Stride of the convolution operation
+        """
         return F.Conv1d.apply(self, weight, stride, cl_ctx=cl_ctx, cl_queue=cl_queue)
     
     def conv2d(self, weight, stride):
+        """2d convolution
+        
+        Args:
+            weight (Tensor): Filter weight (out_channel, in_channel, *kernel_size)
+            stride (int): Stride of the convolution operation
+        """
         return F.Conv2d.apply(self, weight, stride, cl_ctx=cl_ctx, cl_queue=cl_queue)
 
     # ****************************************

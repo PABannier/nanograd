@@ -1,11 +1,9 @@
 from nanograd.tensor import Tensor
-from nanograd.autograd_engine import *
-from nanograd.nn.functional import *
 
 import torch
 import numpy as np
 
-from tests.helpers import *
+from tests.helpers import check_val_and_grad, create_identical_torch_tensor
 
 def test_add():
     a = Tensor(1, requires_grad=True)
@@ -245,8 +243,8 @@ def test_reshape():
     a = Tensor.randn(20, 20, requires_grad=True)
     a_torch = create_identical_torch_tensor(a)
 
-    b = a.reshape((400, 1))
-    b_torch = a_torch.reshape((400, 1))
+    b = a.reshape(shape=[400, 1])
+    b_torch = a_torch.reshape(shape=[400, 1])
 
     b.backward()
     b_torch.sum().backward()
@@ -555,7 +553,6 @@ def test_multiple():
     check_val_and_grad(d, d_torch)
     check_val_and_grad(e, e_torch)
 
-
 def test_multiple_2():
     a = Tensor.normal(30, 1, (3, 3), requires_grad=True)
     a_torch = create_identical_torch_tensor(a)
@@ -566,9 +563,53 @@ def test_multiple_2():
     b_torch.sum().backward()
     b.backward()
 
-    print(a_torch.grad)
-    print(a.grad)
-
     check_val_and_grad(a, a_torch)
     check_val_and_grad(b, b_torch)
+
+def test_multiple_3():
+    a = Tensor.normal(30, 1, (4, 3), requires_grad=True)
+    w = Tensor.normal(30, 1, (3,), requires_grad=True)
+    b = Tensor.normal(30, 1, (1, 1), requires_grad=True)
+
+    a_torch, w_torch, b_torch = create_identical_torch_tensor(a, w, b)
+
+    o = w.reshape(shape=[1, -1]) * a + b
+    o_torch = w_torch * a_torch + b_torch
+
+    o_torch.sum().backward()
+    o.backward()
+
+    check_val_and_grad(o, o_torch)
+    check_val_and_grad(b, b_torch)
+    check_val_and_grad(w, w_torch)
+    check_val_and_grad(a, a_torch)
+    
+
+def test_vanilla_bn():
+    a = Tensor.normal(30, 1, (4, 3, 10), requires_grad=True)
+    w = Tensor.normal(30, 1, (10, ), requires_grad=True)
+    b = Tensor.normal(30, 1, (10, ), requires_grad=True)
+
+    a_torch, w_torch, b_torch = create_identical_torch_tensor(a, w, b)
+
+    m = a.mean(axis=0)
+    m_torch = a_torch.mean(axis=0)
+
+    v = ((a - m) ** 2).mean(axis=0)
+    v_torch = ((a_torch - m_torch) ** 2).mean(axis=0)
+
+    a_hat = (a - m) / v.sqrt()
+    a_hat_torch = (a_torch - m_torch) / v_torch.sqrt()
+
+    o = w * a_hat + b
+    o_torch = w_torch * a_hat_torch + b_torch
+
+    o.backward()
+    o_torch.sum().backward()
+
+    check_val_and_grad(o, o_torch)
+    check_val_and_grad(w, w_torch)
+    check_val_and_grad(b, b_torch)
+    check_val_and_grad(a, a_torch)
+
 

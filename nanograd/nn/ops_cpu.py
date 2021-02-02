@@ -221,30 +221,39 @@ def sum_backward(grad_output, a, axis):
     shape = [1 if axis is None or i in axis else a.shape[i] for i in range(len(a.shape))]
     return grad_output.reshape(shape) + np.zeros_like(a) # Useful for broadcasting
 
-def conv1d_backward(grad_output, a, x_cols, weight, stride):
-    N, C, L = a.shape
-    F, _, KL = weight.shape
-    _, _,  OL = grad_output.shape
+def conv1d_backward(grad_output, x, weight, x_cols, stride):
+    batch_size, in_channel, signal_length = x.shape
+    num_filters, _, kernel_length = weight.shape
+    _, _, output_length = grad_output.shape
 
-    grad_out_reshaped = grad_output.data.transpose(1, 2, 0).reshape(F, -1)
-    grad_weight = (grad_out_reshaped @ x_cols.T).reshape(weight.shape)
+    grad_weight = (grad_output.transpose(1, 2, 0).reshape(num_filters, -1) @ x_cols.T).reshape(weight.shape)
 
-    grad_x_cols = weight.data.reshape(F, -1).T @ grad_out_reshaped
-    grad_x_cols.shape = (C, KL, N, OL)
-    grad_x = col2im(grad_x_cols, x.shape, 1, KL, 0, stride)
+    grad_x = np.zeros((batch_size, in_channel, signal_length), dtype=grad_output.dtype)
+
+    for k in range(output_length):
+        X = k % output_length
+        iX = X * stride
+
+        grad_x[:, :, iX:iX+kernel_length] += np.einsum('ik, kjy->ijy', grad_output[:, :, X], weight)
+    
+    grad_x = grad_x.reshape((batch_size, in_channel, signal_length))
 
     return grad_x, grad_weight
-
-def conv2d_backward(grad_output, x, weight, x_cols, stride):
-    N, C, H, W = x.shape
-    F, _, HH, WW = weight.shape
-    _, _,  OH, OW = grad_output.shape
-
-    grad_out_reshaped = grad_output.transpose(1, 2, 3, 0).reshape(F, -1)
-    grad_weight = (grad_out_reshaped @ x_cols.T).reshape(weight.shape)
         
-    grad_x_cols = weight.data.reshape(F, -1).T @ grad_out_reshaped
-    grad_x_cols.shape = (C, HH, WW, N, OH, OW)
-    grad_x = col2im(grad_x_cols, x.shape, HH, WW, 0, stride) # Needs to be optimized
+def conv2d_backward(grad_output, x, weight, x_cols, stride):
+    batch_size, in_channel, im_height, im_width = x.shape
+    num_filters, _, kernel_height, kernel_width = weight.shape
+    _, _, output_height, output_width = grad_output.shape
+
+    grad_weight = (grad_output.transpose(1, 2, 3, 0).reshape(num_filters, -1) @ x_cols.T).reshape(weight.shape)
+
+    grad_x = np.zeros((batch_size, in_channel, im_height, im_width), dtype=grad_output.dtype)
+
+    for k in range(output_height * output_width):
+        X, Y = k % output_width, k // output_width
+        iX, iY = X * stride, Y * stride
+        grad_x[:,:, iY:iY+kernel_height, iX:iX+kernel_width] += np.einsum('ik,kjyx->ijyx', grad_output[:,:,Y,X], weight)
+
+    grad_x = grad_x.reshape((batch_size, in_channel, im_height, im_width))
 
     return grad_x, grad_weight

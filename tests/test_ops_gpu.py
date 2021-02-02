@@ -1,12 +1,10 @@
 from nanograd.tensor import Tensor
 from nanograd.device import Device
-from nanograd.autograd_engine import *
-from nanograd.nn.functional import *
 
 import torch
 import numpy as np
 
-from tests.helpers import *
+from tests.helpers import check_val_and_grad, create_identical_torch_tensor
 
 import os
 os.environ['PYOPENCL_COMPILER_OUTPUT'] = '1'
@@ -302,8 +300,8 @@ def test_sum_full_reduce():
 
     b.cpu(), a.cpu()
 
-    check_val_and_grad(b, b_torch, atol=1e-4)
-    check_val_and_grad(a, a_torch, atol=1e-4)
+    check_val_and_grad(b, b_torch)
+    check_val_and_grad(a, a_torch)
 
 
 def test_sum_reduce_one_axis():
@@ -320,8 +318,8 @@ def test_sum_reduce_one_axis():
 
     b.cpu(), a.cpu()
 
-    check_val_and_grad(b, b_torch, atol=1e-4)
-    check_val_and_grad(a, a_torch, atol=1e-4)
+    check_val_and_grad(b, b_torch)
+    check_val_and_grad(a, a_torch)
 
 
 def test_sum_reduce_axis():
@@ -338,8 +336,8 @@ def test_sum_reduce_axis():
 
     b.cpu(), a.cpu()
 
-    check_val_and_grad(b, b_torch, atol=1e-4)
-    check_val_and_grad(a, a_torch, atol=1e-4)
+    check_val_and_grad(b, b_torch)
+    check_val_and_grad(a, a_torch)
 
 
 def test_max_full_reduce():

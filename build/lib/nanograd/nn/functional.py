@@ -1,6 +1,7 @@
 import numpy as np
 
-from nanograd.tensor import Tensor
+#from nanograd.tensor import tensor.Tensor
+import nanograd.tensor as tensor
 from nanograd.device import Device
 import nanograd.nn.ops_cpu as ops_cpu
 import nanograd.nn.ops_gpu as ops_gpu
@@ -9,16 +10,16 @@ from nanograd.nn.conv_ops import (get_conv1d_output_size, get_conv2d_output_size
                                   get_im2col_indices, col2im)
 
 
-def cross_entropy(predicted:Tensor, target:Tensor) -> Tensor:
+def cross_entropy(predicted:tensor.Tensor, target:tensor.Tensor) -> tensor.Tensor:
     """Calculates Cross Entropy Loss between logits and true labels.
        Used in the CrossEntropy module
 
     Args:
-        predicted (Tensor): Logits
-        target (Tensor): Target classes
+        predicted (tensor.Tensor): Logits
+        target (tensor.Tensor): Target classes
 
     Returns:
-        Tensor: Loss in a Tensor of shape ()
+        tensor.Tensor: Loss in a tensor.Tensor of shape ()
     """
     batch_size, num_classes = predicted.shape
     labels = target.one_hot(num_classes)
@@ -33,9 +34,6 @@ def cross_entropy(predicted:Tensor, target:Tensor) -> Tensor:
 class OneHot(Function):
     @staticmethod
     def forward(ctx, a, num_classes):
-        if not type(a).__name__ == "Tensor":
-            raise Exception("Arg for OneHot must be tensor: {}".format(type(a).__name__))
-
         requires_grad = a.requires_grad
         is_leaf = not a.requires_grad
 
@@ -44,7 +42,7 @@ class OneHot(Function):
         else:
             out = ops_gpu.one_hot_encoding(ctx.cl_ctx, ctx.cl_queue, a.data, num_classes)
         
-        return Tensor(out, device=a.device, requires_grad=requires_grad,
+        return tensor.Tensor(out, device=a.device, requires_grad=requires_grad,
                       is_leaf=is_leaf)
     
     @staticmethod
@@ -57,9 +55,6 @@ class OneHot(Function):
 class Unsqueeze(Function):
     @staticmethod
     def forward(ctx, a, axis):
-        if not type(a).__name__ == "Tensor":
-            raise Exception("Arg for Unsqueeze must be tensor: {}".format(type(a).__name__))
-
         requires_grad = a.requires_grad
         is_leaf = not a.requires_grad
 
@@ -70,7 +65,7 @@ class Unsqueeze(Function):
         else:
             out = ops_gpu.unsqueeze_forward(ctx.cl_ctx, ctx.cl_queue, a, axis)
 
-        return Tensor(out, device=a.device, requires_grad=requires_grad,
+        return tensor.Tensor(out, device=a.device, requires_grad=requires_grad,
                       is_leaf=is_leaf)
     
     @staticmethod
@@ -82,15 +77,12 @@ class Unsqueeze(Function):
         else:
             grad = ops_gpu.unsqueeze_backward(ctx.cl_ctx, ctx.cl_queue, grad_output, axis)
         
-        return Tensor(grad, device=grad_output.device), None
+        return tensor.Tensor(grad, device=grad_output.device), None
 
 
 class Squeeze(Function):
     @staticmethod
     def forward(ctx, a, axis):
-        if not type(a).__name__ == "Tensor":
-            raise Exception("Arg for Squeeze must be tensor: {}".format(type(a).__name__))
-
         is_squeezed = False
         requires_grad = a.requires_grad
         is_leaf = not a.requires_grad
@@ -108,7 +100,7 @@ class Squeeze(Function):
         ctx.axis = axis
         ctx.is_squeezed = is_squeezed
         
-        return Tensor(out, device=a.device, requires_grad=requires_grad,
+        return tensor.Tensor(out, device=a.device, requires_grad=requires_grad,
                       is_leaf=is_leaf)
     
     @staticmethod
@@ -123,15 +115,12 @@ class Squeeze(Function):
         else:
             grad = grad_output.data
         
-        return Tensor(grad, device=grad_output.device), None
+        return tensor.Tensor(grad, device=grad_output.device), None
 
 
 class Slice(Function):
     @staticmethod
     def forward(ctx, a, indices=None):
-        if not type(a).__name__ == 'Tensor':
-            raise Exception("Arg for Slice must be tensor: {}".format(type(a).__name__))
-
         ctx.shape, ctx.indices = a.shape, indices
 
         requires_grad = a.requires_grad
@@ -142,7 +131,7 @@ class Slice(Function):
         else:
             out_data = ops_gpu.slice_forward(ctx.cl_ctx, ctx.cl_queue, a.data, indices)
         
-        out = Tensor(out_data, requires_grad=requires_grad, 
+        out = tensor.Tensor(out_data, requires_grad=requires_grad, 
                             is_leaf=is_leaf, device=a.device)
         out.children = [a]
         out.op = 'slice'
@@ -158,7 +147,7 @@ class Slice(Function):
         else:
             grad = ops_gpu.slice_backward(ctx.cl_ctx, ctx.cl_queue, grad_output.data, shape, fwd_indices)
         
-        return Tensor(grad, device=grad_output.device), None
+        return tensor.Tensor(grad, device=grad_output.device), None
 
 
 class Transpose(Function):
@@ -175,7 +164,7 @@ class Transpose(Function):
         else:
             out_data = ops_gpu.transpose_forward(ctx.cl_ctx, ctx.cl_queue, a.data)
 
-        out = Tensor(out_data, requires_grad=requires_grad, 
+        out = tensor.Tensor(out_data, requires_grad=requires_grad, 
                      is_leaf=is_leaf, device=a.device)
         out.children = [a]
         out.op = 'transpose'
@@ -189,15 +178,12 @@ class Transpose(Function):
         else:
             grad = ops_gpu.transpose_backward(ctx.cl_ctx, ctx.cl_queue, grad_output.data)
 
-        return Tensor(grad, device=grad_output.device), None
+        return tensor.Tensor(grad, device=grad_output.device), None
 
 
 class Reshape(Function):
     @staticmethod
     def forward(ctx, a, shape):
-        if not type(a).__name__ == 'Tensor':
-            raise Exception("Arg for Reshape must be tensor: {}".format(type(a).__name__))
-
         ctx.shape = a.shape
         requires_grad = a.requires_grad
         is_leaf = not requires_grad
@@ -207,7 +193,7 @@ class Reshape(Function):
         else:
             out_data = ops_gpu.reshape_forward(ctx.cl_ctx, ctx.cl_queue, a, shape)
         
-        out = Tensor(out_data, requires_grad=requires_grad, 
+        out = tensor.Tensor(out_data, requires_grad=requires_grad, 
                      is_leaf=is_leaf, device=a.device)
         
         assert np.prod(out.shape) == np.prod(a.shape), "Inconsistent array reshape size"
@@ -224,15 +210,12 @@ class Reshape(Function):
             grad = ops_gpu.reshape_backward(ctx.cl_ctx, ctx.cl_queue, 
                                             grad_output.data, ctx.shape)
 
-        return Tensor(grad, device=grad_output.device), None
+        return tensor.Tensor(grad, device=grad_output.device), None
 
 
 class Max(Function):
     @staticmethod
     def forward(ctx, a, axis=None, keepdims=False):
-        if not type(a).__name__ == "Tensor":
-            raise Exception("Arg for Max must be tensor: {}".format(type(a).__name__))
-
         axis = [axis] if type(axis) == int else axis
 
         ctx.save_for_backward(a)
@@ -248,7 +231,7 @@ class Max(Function):
         
         ctx.axis, ctx.out = axis, out_data
 
-        out = Tensor(out_data, requires_grad=requires_grad, 
+        out = tensor.Tensor(out_data, requires_grad=requires_grad, 
                      is_leaf=is_leaf, device=a.device)
         out.children = [a]
         out.op = 'max'
@@ -266,15 +249,12 @@ class Max(Function):
             grad = ops_gpu.max_backward(ctx.cl_ctx, ctx.cl_queue, grad_output.data, 
                                         inp.data, out, axis)
             
-        return Tensor(grad, device=grad_output.device), None
+        return tensor.Tensor(grad, device=grad_output.device), None
 
 
 class Min(Function):
     @staticmethod
     def forward(ctx, a, axis=None, keepdims=False):
-        if not type(a).__name__ == "Tensor":
-            raise Exception("Arg for Min must be tensor: {}".format(type(a).__name__))
-
         axis = [axis] if type(axis) == int else axis
 
         ctx.save_for_backward(a)
@@ -289,7 +269,7 @@ class Min(Function):
         
         ctx.axis, ctx.out = axis, out_data
 
-        out = Tensor(out_data, requires_grad=requires_grad, 
+        out = tensor.Tensor(out_data, requires_grad=requires_grad, 
                      is_leaf=is_leaf, device=a.device)
         out.children = [a]
         out.op = 'min'
@@ -307,15 +287,12 @@ class Min(Function):
             grad = ops_gpu.min_backward(ctx.cl_ctx, ctx.cl_queue, grad_output.data, 
                                         inp.data, out, axis)
 
-        return Tensor(grad, device=grad_output.device), None
+        return tensor.Tensor(grad, device=grad_output.device), None
 
 
 class Log(Function):
     @staticmethod
     def forward(ctx, a):
-        if not type(a).__name__ == 'Tensor':
-            raise Exception("Arg for Log must be tensor: {}".format(type(a).__name__))
-
         ctx.save_for_backward(a)
         requires_grad = a.requires_grad
 
@@ -324,7 +301,7 @@ class Log(Function):
         else:
             out_data = ops_gpu.log_forward(ctx.cl_ctx, ctx.cl_queue, a.data)
 
-        out = Tensor(out_data, requires_grad=requires_grad, 
+        out = tensor.Tensor(out_data, requires_grad=requires_grad, 
                             is_leaf=not requires_grad, device=a.device)
         out.children = [a]   
         out.op = 'log'                
@@ -339,15 +316,12 @@ class Log(Function):
         else:
             grad_a = ops_gpu.log_backward(ctx.cl_ctx, ctx.cl_queue, grad_output.data, a.data)
 
-        return Tensor(grad_a, device=grad_output.device), None
+        return tensor.Tensor(grad_a, device=grad_output.device), None
     
 
 class Exp(Function):
     @staticmethod
-    def forward(ctx, a):
-        if not type(a).__name__ == "Tensor":
-            raise Exception("Arg for Exp must be tensor: {}".format(type(a).__name__))
-            
+    def forward(ctx, a):   
         ctx.save_for_backward(a)
         requires_grad = a.requires_grad
 
@@ -356,7 +330,7 @@ class Exp(Function):
         else:
             out_data = ops_gpu.exp_forward(ctx.cl_ctx, ctx.cl_queue, a.data)
 
-        out = Tensor(out_data, requires_grad=requires_grad, 
+        out = tensor.Tensor(out_data, requires_grad=requires_grad, 
                             is_leaf=not requires_grad, device=a.device)
         out.children = [a]
         out.op = 'exp'
@@ -371,15 +345,12 @@ class Exp(Function):
         else:
             grad_a = ops_gpu.exp_backward(ctx.cl_ctx, ctx.cl_queue, grad_output.data, a.data)
 
-        return Tensor(grad_a, device=grad_output.device), None
+        return tensor.Tensor(grad_a, device=grad_output.device), None
 
 
 class Add(Function):
     @staticmethod
     def forward(ctx, a, b):
-        if not (type(a).__name__ == 'Tensor' and type(b).__name__ == 'Tensor'):
-            raise Exception("Both args must be Tensors: {}, {}".format(type(a).__name__, type(b).__name__))
-
         if a.device != b.device:
             if a.device == Device.CPU and b.device == Device.GPU:
                 a.gpu()
@@ -394,7 +365,7 @@ class Add(Function):
         else:
             out_data = ops_gpu.add_forward(ctx.cl_ctx, ctx.cl_queue, a.data, b.data)
 
-        out = Tensor(out_data, requires_grad=requires_grad, 
+        out = tensor.Tensor(out_data, requires_grad=requires_grad, 
                             is_leaf=not requires_grad, device=a.device)
         out.children = [a, b]
         out.op = 'add'
@@ -409,15 +380,12 @@ class Add(Function):
         else:
             grad_a, grad_b = ops_gpu.add_backward(ctx.cl_ctx, ctx.cl_queue, grad_output.data,
                                                   a.shape, b.shape)
-        return Tensor(grad_a, device=grad_output.device), Tensor(grad_b, device=grad_output.device)
+        return tensor.Tensor(grad_a, device=grad_output.device), tensor.Tensor(grad_b, device=grad_output.device)
 
 
 class Sum(Function):
     @staticmethod
     def forward(ctx, a, axis, keepdims):
-        if not type(a).__name__ == "Tensor":
-            raise Exception(f"Only sum of tensor is supported. Got: {type(a).__name__}")
-
         ctx.axis = axis
         ctx.save_for_backward(a)
 
@@ -429,7 +397,7 @@ class Sum(Function):
         else:
             out_data = ops_gpu.sum_forward(ctx.cl_ctx, ctx.cl_queue, a.data, axis, keepdims)
 
-        out = Tensor(out_data, requires_grad=requires_grad, 
+        out = tensor.Tensor(out_data, requires_grad=requires_grad, 
                             is_leaf=is_leaf, device=a.device)
         out.children = [a]
         out.op = 'sum'
@@ -445,15 +413,12 @@ class Sum(Function):
         else:
             grad = ops_gpu.sum_backward(ctx.cl_ctx, ctx.cl_queue, grad_output.data, a.data, axis)
         
-        return Tensor(grad, device=grad_output.device), None, None
+        return tensor.Tensor(grad, device=grad_output.device), None, None
 
 
 class Neg(Function):
     @staticmethod
     def forward(ctx, a):
-        if not type(a).__name__ == "Tensor":
-            raise Exception(f"Only neg of tensor is supported. Got: {type(a).__name__}")
-
         requires_grad = a.requires_grad
 
         if a.device == Device.CPU:
@@ -461,7 +426,7 @@ class Neg(Function):
         else:
             out_data = ops_gpu.neg_forward(ctx.cl_ctx, ctx.cl_queue, a.data)
 
-        out = Tensor(out_data, requires_grad=requires_grad, 
+        out = tensor.Tensor(out_data, requires_grad=requires_grad, 
                             is_leaf=not a.requires_grad, device=a.device)
         out.children = [a]
         out.op = 'neg'
@@ -473,15 +438,12 @@ class Neg(Function):
             grad = ops_cpu.neg_backward(grad_output.data)
         else:
             grad = ops_gpu.neg_backward(ctx.cl_ctx, ctx.cl_queue, grad_output.data)
-        return Tensor(grad, device=grad_output.device), None
+        return tensor.Tensor(grad, device=grad_output.device), None
 
 
 class MatMul(Function):
     @staticmethod
     def forward(ctx, a, b):
-        if not (type(a).__name__ == 'Tensor' and type(b).__name__ == 'Tensor'):
-            raise Exception("Both args must be Tensors: {}, {}".format(type(a).__name__, type(b).__name__))
-
         if a.shape[1] != b.shape[0]:
             raise Exception(f"Shapes don't match: {a.shape}, {b.shape}")
 
@@ -500,7 +462,7 @@ class MatMul(Function):
         else:
             out_data = ops_gpu.matmul_forward(ctx.cl_ctx, ctx.cl_queue, a.data, b.data)
 
-        out = Tensor(out_data, requires_grad=requires_grad, 
+        out = tensor.Tensor(out_data, requires_grad=requires_grad, 
                             is_leaf=is_leaf, device=a.device)
         out.children = [a, b]
         out.op = 'matmul'
@@ -515,14 +477,12 @@ class MatMul(Function):
         else:
             grad_a, grad_b = ops_gpu.matmul_backward(ctx.cl_ctx, ctx.cl_queue, 
                                                      grad_output.data, a.data, b.data)
-        return Tensor(grad_a, device=grad_output.device), Tensor(grad_b, device=grad_output.device)
+        return tensor.Tensor(grad_a, device=grad_output.device), tensor.Tensor(grad_b, device=grad_output.device)
 
 
 class Pow(Function):
     @staticmethod
     def forward(ctx, a, exp):
-        if not type(a).__name__ == "Tensor":
-            raise Exception("Only power of tensor is supported")
         if not isinstance(exp, (int, float)):
             raise Exception("Power can only be float or int")
 
@@ -536,7 +496,7 @@ class Pow(Function):
         else:
             out_data = ops_gpu.pow_forward(ctx.cl_ctx, ctx.cl_queue, a.data, exp)
 
-        out = Tensor(out_data, requires_grad=requires_grad, 
+        out = tensor.Tensor(out_data, requires_grad=requires_grad, 
                             is_leaf=not requires_grad, device=a.device)
         out.children = [a]
         out.op = 'pow'
@@ -552,15 +512,12 @@ class Pow(Function):
         else:
             grad_a = ops_gpu.pow_backward(ctx.cl_ctx, ctx.cl_queue, grad_output.data, a.data, exp)
 
-        return Tensor(grad_a, device=grad_output.device), None
+        return tensor.Tensor(grad_a, device=grad_output.device), None
 
 
 class Mul(Function):
     @staticmethod
     def forward(ctx, a, b):
-        if not (type(a).__name__ == 'Tensor' and type(b).__name__ == 'Tensor'):
-            raise Exception("Only tensors can be multiplied element-wise")
-
         if a.device != b.device:
             if a.device == Device.CPU and b.device == Device.GPU:
                 a.gpu()
@@ -575,7 +532,7 @@ class Mul(Function):
         else:
             out_data = ops_gpu.mul_forward(ctx.cl_ctx, ctx.cl_queue, a.data, b.data)
 
-        out = Tensor(out_data, requires_grad=requires_grad, 
+        out = tensor.Tensor(out_data, requires_grad=requires_grad, 
                             is_leaf=not requires_grad, device=a.device)
         out.children = [a, b]
         out.op = 'mul'
@@ -590,15 +547,12 @@ class Mul(Function):
         else:
             grad_a, grad_b = ops_gpu.mul_backward(ctx.cl_ctx, ctx.cl_queue, grad_output.data, a.data, b.data)
         
-        return Tensor(grad_a, device=grad_output.device), Tensor(grad_b, device=grad_output.device)
+        return tensor.Tensor(grad_a, device=grad_output.device), tensor.Tensor(grad_b, device=grad_output.device)
 
 
 class ReLU(Function):
     @staticmethod
     def forward(ctx, a):
-        if not type(a).__name__ == 'Tensor':
-            raise Exception("ReLU can only be applied to tensors")
-
         ctx.save_for_backward(a)
 
         requires_grad = a.requires_grad
@@ -609,7 +563,7 @@ class ReLU(Function):
         else:
             out_data = ops_gpu.relu_forward(ctx.cl_ctx, ctx.cl_queue, a.data)
 
-        out = Tensor(out_data, requires_grad=requires_grad, 
+        out = tensor.Tensor(out_data, requires_grad=requires_grad, 
                             is_leaf=is_leaf, device=a.device)
         out.children = [a]
         out.op = 'relu'
@@ -624,15 +578,12 @@ class ReLU(Function):
         else:
             grad_a = ops_gpu.relu_backward(ctx.cl_ctx, ctx.cl_queue, grad_output.data, a.data)
 
-        return Tensor(grad_a, device=grad_output.device), None
+        return tensor.Tensor(grad_a, device=grad_output.device), None
 
 
 class Sigmoid(Function):
     @staticmethod
     def forward(ctx, a):
-        if not type(a).__name__ == "Tensor":
-            raise Exception("Sigmoid can only be applied to tensors")
-
         ctx.save_for_backward(a)
 
         requires_grad = a.requires_grad
@@ -643,7 +594,7 @@ class Sigmoid(Function):
         else:
             out_data = ops_gpu.sigmoid_forward(ctx.cl_ctx, ctx.cl_queue, a.data)
         
-        out = Tensor(out_data, requires_grad=requires_grad,
+        out = tensor.Tensor(out_data, requires_grad=requires_grad,
                             is_leaf=is_leaf, device=a.device)
         out.children = [a]
         out.op = 'sigmoid'
@@ -658,15 +609,12 @@ class Sigmoid(Function):
         else:
             grad_a = ops_gpu.sigmoid_backward(ctx.cl_ctx, ctx.cl_queue, grad_output.data, a.data)
 
-        return Tensor(grad_a, device=grad_output.device), None
+        return tensor.Tensor(grad_a, device=grad_output.device), None
 
 
 class Tanh(Function):
     @staticmethod
     def forward(ctx, a):
-        if not type(a).__name__ == "Tensor":
-            raise Exception("Tanh can only be applied to tensors")
-
         ctx.save_for_backward(a)
 
         requires_grad = a.requires_grad
@@ -677,7 +625,7 @@ class Tanh(Function):
         else:
             out_data = ops_gpu.tanh_forward(ctx.cl_ctx, ctx.cl_queue, a.data)
         
-        out = Tensor(out_data, requires_grad=requires_grad,
+        out = tensor.Tensor(out_data, requires_grad=requires_grad,
                             is_leaf=is_leaf, device=a.device)
         out.children = [a]
         out.op = 'tanh'
@@ -692,7 +640,7 @@ class Tanh(Function):
         else:
             grad_a = ops_gpu.tanh_backward(ctx.cl_ctx, ctx.cl_queue, grad_output.data, a.data)
 
-        return Tensor(grad_a, device=grad_output.device), None
+        return tensor.Tensor(grad_a, device=grad_output.device), None
 
 
 class Conv1d(Function):
@@ -702,12 +650,12 @@ class Conv1d(Function):
             The forward/backward of a Conv1d Layer in the comp graph.
             
             Args:
-                x (Tensor): (batch_size, in_channel, input_size) input data
-                weight (Tensor): (out_channel, in_channel, kernel_length)
+                x (tensor.Tensor): (batch_size, in_channel, input_size) input data
+                weight (tensor.Tensor): (out_channel, in_channel, kernel_length)
                 stride (int): Stride of the convolution
             
             Returns:
-                Tensor: (batch_size, out_channel, output_size) output data
+                tensor.Tensor: (batch_size, out_channel, output_size) output data
         """
 
         requires_grad = x.requires_grad
@@ -722,7 +670,7 @@ class Conv1d(Function):
         ctx.save_for_backward(x, weight)
         ctx.stride = stride
 
-        out = Tensor(out, device=x.device, requires_grad=requires_grad, is_leaf=is_leaf)
+        out = tensor.Tensor(out, device=x.device, requires_grad=requires_grad, is_leaf=is_leaf)
         out.children = [x, weight]
         out.op = 'conv1d'
         return out
@@ -739,7 +687,7 @@ class Conv1d(Function):
             grad_x, grad_weight = ops_gpu.conv1d_backward(ctx.cl_ctx, ctx.cl_queue, grad_output.data, 
                                                           x.data, weight.data, stride)
 
-        return Tensor(grad_x, device=grad_output.device), Tensor(grad_weight, device=grad_output.device)
+        return tensor.Tensor(grad_x, device=grad_output.device), tensor.Tensor(grad_weight, device=grad_output.device)
         
 
 class Conv2d(Function):
@@ -749,12 +697,12 @@ class Conv2d(Function):
             The forward/backward of a Conv2d Layer in the comp graph.
             
             Args:
-                x (Tensor): (batch_size, in_channel, input_height, input_width) input data
-                weight (Tensor): (out_channel, in_channel, kernel_height, kernel_width)
+                x (tensor.Tensor): (batch_size, in_channel, input_height, input_width) input data
+                weight (tensor.Tensor): (out_channel, in_channel, kernel_height, kernel_width)
                 stride (int): Stride of the convolution
             
             Returns:
-                Tensor: (batch_size, out_channel, output_height, output_width) output data
+                tensor.Tensor: (batch_size, out_channel, output_height, output_width) output data
         """
 
         requires_grad = x.requires_grad
@@ -769,7 +717,7 @@ class Conv2d(Function):
         ctx.save_for_backward(x, weight)
         ctx.stride = stride
 
-        out = Tensor(out, requires_grad=requires_grad, is_leaf=is_leaf, device=x.device)
+        out = tensor.Tensor(out, requires_grad=requires_grad, is_leaf=is_leaf, device=x.device)
         out.children = [x, weight]
         out.op = 'conv2d'
         
@@ -787,7 +735,7 @@ class Conv2d(Function):
             grad_x, grad_weight = ops_gpu.conv2d_backward(ctx.cl_ctx, ctx.cl_queue, grad_output.data, 
                                                                      x.data, weight.data, stride)
 
-        grad_x = Tensor(grad_x, device=grad_output.device)
-        grad_weight = Tensor(grad_weight, device=grad_output.device)
+        grad_x = tensor.Tensor(grad_x, device=grad_output.device)
+        grad_weight = tensor.Tensor(grad_weight, device=grad_output.device)
 
         return grad_x, grad_weight

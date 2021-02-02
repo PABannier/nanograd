@@ -52,9 +52,7 @@ class SGD(Optimizer):
     def step(self) -> None:
         """SGD update rule"""
         for param, mom in zip(self.params, self.momentums):
-            if param.grad == None:
-                print(param)
-            mom.data = mom.data  * self.momentum + self.lr * param.grad.data
+            mom.data = mom.data * self.momentum + self.lr * param.grad.data
             param.data -= mom.data
 
     def reset(self) -> None:

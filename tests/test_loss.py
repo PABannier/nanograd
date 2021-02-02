@@ -1,7 +1,7 @@
-from nanograd.tensor import Tensor
+from nanograd.tensor import Tensor, cross_entropy
 from nanograd.autograd_engine import *
-from nanograd.nn.functional import *
 from nanograd.device import Device
+import nanograd.nn.module as nnn
 
 import torch
 import numpy as np
@@ -29,6 +29,22 @@ def test_cross_entropy():
     check_val_and_grad(predicted, pred_torch)
     check_val_and_grad(target, target_torch)
 
+def test_mse_loss():
+    batch_size = 64
+
+    predicted = Tensor.normal(5, 2, (batch_size, 1), requires_grad=True)
+    target = Tensor.normal(5, 3, (batch_size, 1))
+    pred_torch, target_torch = create_identical_torch_tensor(predicted, target)
+
+    loss = nnn.MSELoss()(predicted, target)
+    loss_torch = torch.nn.functional.mse_loss(pred_torch, target_torch)
+
+    loss_torch.sum().backward()
+    loss.backward()
+
+    check_val_and_grad(loss, loss_torch)
+    check_val_and_grad(predicted, pred_torch)
+    check_val_and_grad(target, target_torch)
 
 def test_cross_entropy_gpu():
     num_classes = 10
@@ -48,7 +64,32 @@ def test_cross_entropy_gpu():
     loss_torch.sum().backward()
     loss.backward()
 
-    loss.cpu(), predicted.cpu(), target.cpu()
+    loss = loss.cpu()
+    predicted = predicted.cpu()
+    target = target.cpu()
+
+    check_val_and_grad(loss, loss_torch)
+    check_val_and_grad(predicted, pred_torch)
+    check_val_and_grad(target, target_torch)
+
+def test_mse_loss_gpu():
+    batch_size = 64
+
+    predicted = Tensor.normal(5, 2, (batch_size, 1), requires_grad=True)
+    target = Tensor.normal(5, 3, (batch_size, 1))
+    pred_torch, target_torch = create_identical_torch_tensor(predicted, target)
+
+    predicted.gpu(), target.gpu()
+
+    loss = nnn.MSELoss()(predicted, target)
+    loss_torch = torch.nn.functional.mse_loss(pred_torch, target_torch)
+
+    loss_torch.sum().backward()
+    loss.backward()
+
+    loss = loss.cpu()
+    predicted = predicted.cpu()
+    target = target.cpu()
 
     check_val_and_grad(loss, loss_torch)
     check_val_and_grad(predicted, pred_torch)

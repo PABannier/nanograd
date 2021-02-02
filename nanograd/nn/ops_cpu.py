@@ -244,7 +244,8 @@ def conv2d_backward(grad_output, x, x_reshaped, weight, stride):
     num_filters, _, kernel_height, kernel_width = weight.shape
     _, _, output_height, output_width = grad_output.shape
     
-    grad_weight = np.einsum('ikYX, ijYXyx -> kjyx', grad_output, x_reshaped)
+    #ALTERNATIVE: grad_weight = np.einsum('ikYX, ijYXyx -> kjyx', grad_output, x_reshaped)
+    grad_weight = np.tensordot(grad_output, x_reshaped, ((0,2,3),(0,2,3)))
 
     grad_x = np.zeros((batch_size, in_channel, im_height, im_width), dtype=grad_output.dtype)
 

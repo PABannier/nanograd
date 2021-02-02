@@ -269,3 +269,29 @@ def test_conv2d_bn2d_model_adam():
         optimizer_torch.step()
     
     check_model_parameters(model, model_torch, atol=1e-4)
+
+def test_conv2d_bn2d_model_adamw():
+    inp, targ = Tensor.normal(0, 1, (8, 3, 30, 30)), Tensor.normal(0, 1, (8, 1))
+    model = nnn.Sequential(nnn.Conv2d(3, 32, 2, 2), nnn.BatchNorm2d(32), nnn.ReLU(),
+                           nnn.Conv2d(32, 64, 3, 3), nnn.BatchNorm2d(64), nnn.ReLU(),
+                           nnn.Flatten(), nnn.Linear(1600, 1))
+    optimizer = optim.AdamW(model.parameters())
+
+    inp_torch, targ_torch = create_identical_torch_tensor(inp, targ)
+    model_torch = get_same_pytorch_model(model)
+    optimizer_torch = get_same_pytorch_optimizer(optimizer, model_torch)
+
+    for _ in range(5):
+        y = model(inp)
+        y_torch = model_torch(inp_torch)
+
+        loss = nnn.MSELoss()(y, targ)
+        loss_torch = nn.MSELoss()(y_torch, targ_torch)
+
+        loss.backward()
+        loss_torch.backward()
+
+        optimizer.step()
+        optimizer_torch.step()
+    
+    check_model_parameters(model, model_torch, atol=1e-4)

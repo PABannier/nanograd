@@ -144,8 +144,8 @@ def test_exp():
 
     a.cpu(), b.cpu()
 
-    check_val_and_grad(b, b_torch)
-    check_val_and_grad(a, a_torch)
+    check_val_and_grad(b, b_torch, atol=1e-4, atol_grad=1e-4)
+    check_val_and_grad(a, a_torch, atol=1e-4, atol_grad=1e-4)
 
 
 def test_pow():
@@ -161,8 +161,8 @@ def test_pow():
 
     d.cpu(), a.cpu()
 
-    check_val_and_grad(a, a_torch)
-    check_val_and_grad(d, d_torch)
+    check_val_and_grad(a, a_torch, atol=1e-4, atol_grad=1e-4)
+    check_val_and_grad(d, d_torch, atol=1e-4, atol_grad=1e-4)
 
 
 def test_pow_neg():
@@ -287,7 +287,7 @@ def test_tanh():
 
 
 def test_sum_full_reduce():
-    a = Tensor.normal(0, 1, (30, 30, 30), requires_grad=True)
+    a = Tensor.normal(0, 1, (3, 3, 3), requires_grad=True)
     a_torch = create_identical_torch_tensor(a)
 
     a.gpu()
@@ -300,12 +300,12 @@ def test_sum_full_reduce():
 
     b.cpu(), a.cpu()
 
-    check_val_and_grad(b, b_torch)
-    check_val_and_grad(a, a_torch)
+    check_val_and_grad(b, b_torch, atol=1e-4, atol_grad=1e-4)
+    check_val_and_grad(a, a_torch, atol=1e-4, atol_grad=1e-4)
 
 
 def test_sum_reduce_one_axis():
-    a = Tensor.normal(0, 1, (30, 30, 60), requires_grad=True)
+    a = Tensor.normal(0, 1, (3, 3, 6), requires_grad=True)
     a_torch = create_identical_torch_tensor(a)
 
     a.gpu()
@@ -323,7 +323,7 @@ def test_sum_reduce_one_axis():
 
 
 def test_sum_reduce_axis():
-    a = Tensor.normal(0, 1, (30, 30, 30), requires_grad=True)
+    a = Tensor.normal(0, 1, (3, 4, 5), requires_grad=True)
     a_torch = create_identical_torch_tensor(a)
 
     a.gpu()
@@ -336,12 +336,12 @@ def test_sum_reduce_axis():
 
     b.cpu(), a.cpu()
 
-    check_val_and_grad(b, b_torch)
-    check_val_and_grad(a, a_torch)
+    check_val_and_grad(b, b_torch, atol=1e-4, atol_grad=1e-4)
+    check_val_and_grad(a, a_torch, atol=1e-4, atol_grad=1e-4)
 
 
 def test_max_full_reduce():
-    a = Tensor.normal(0, 1, (30, 30, 30), requires_grad=True)
+    a = Tensor.normal(0, 1, (3, 5, 4), requires_grad=True)
     a_torch = create_identical_torch_tensor(a)
 
     a.gpu()
@@ -359,7 +359,7 @@ def test_max_full_reduce():
 
 
 def test_max_reduce_one_axis_forward():
-    a = Tensor.normal(0, 1, (30, 30, 60), requires_grad=True)
+    a = Tensor.normal(0, 1, (3, 4, 5), requires_grad=True)
     a_torch = create_identical_torch_tensor(a)
 
     a.gpu()
@@ -377,7 +377,7 @@ def test_max_reduce_one_axis_forward():
 
 
 def test_min_full_reduce():
-    a = Tensor.normal(0, 1, (30, 30, 30), requires_grad=True)
+    a = Tensor.normal(0, 1, (5, 4, 3), requires_grad=True)
     a_torch = create_identical_torch_tensor(a)
 
     a.gpu()
@@ -395,7 +395,7 @@ def test_min_full_reduce():
 
 
 def test_min_reduce_one_axis():
-    a = Tensor.normal(0, 1, (30, 30, 60), requires_grad=True)
+    a = Tensor.normal(0, 1, (3, 3, 6), requires_grad=True)
     a_torch = create_identical_torch_tensor(a)
 
     a.gpu()

@@ -52,9 +52,9 @@ class SGD(Optimizer):
     def step(self) -> None:
         """SGD update rule"""
         for param, mom in zip(self.params, self.momentums):
-            mom.data = mom.data * self.momentum + self.lr * param.grad.data
-            param.data -= mom.data
-
+            mom = mom * self.momentum + self.lr * param.grad
+            param -= mom
+            
     def reset(self) -> None:
         self.momentums = [Tensor.zeros(p.shape) for p in self.params]  
 
@@ -83,14 +83,14 @@ class Adam(Optimizer):
         self.t += 1
 
         for param, m1, m2 in zip(self.params, self.moments1, self.moments2):
-            g = param.grad.data
-            m1.data = self.beta1 * m1.data + (1 - self.beta1) * g
-            m2.data = self.beta2 * m2.data + (1 - self.beta2) * (g ** 2)
+            g = param.grad
+            m1 = self.beta1 * m1 + (1 - self.beta1) * g
+            m2 = self.beta2 * m2 + (1 - self.beta2) * (g ** 2)
 
-            m1_hat = m1.data / (1 - (self.beta1 ** self.t))
-            m2_hat = m2.data / (1 - (self.beta2 ** self.t))
+            m1_hat = m1 / (1 - (self.beta1 ** self.t))
+            m2_hat = m2 / (1 - (self.beta2 ** self.t))
 
-            param.data -= self.lr * m1_hat / (np.sqrt(m2_hat) + self.eps)
+            param -= self.lr * m1_hat / (m2_hat.sqrt() + self.eps)
 
     def reset(self) -> None:
         self._init_parameters()
@@ -127,14 +127,14 @@ class AdamW(Optimizer):
         self.t += 1
 
         for param, m1, m2 in zip(self.params, self.moments1, self.moments2):
-            g = param.grad.data + self.reg * param.data
-            m1.data = self.beta1 * m1.data + (1 - self.beta1) * g
-            m2.data = self.beta2 * m2.data + (1 - self.beta2) * (g ** 2)
+            g = param.grad + self.reg * param
+            m1 = self.beta1 * m1 + (1 - self.beta1) * g
+            m2 = self.beta2 * m2 + (1 - self.beta2) * (g ** 2)
 
-            m1_hat = m1.data / (1 - (self.beta1 ** self.t))
-            m2_hat = m2.data / (1 - (self.beta2 ** self.t))
+            m1_hat = m1 / (1 - (self.beta1 ** self.t))
+            m2_hat = m2 / (1 - (self.beta2 ** self.t))
 
-            param.data -= ((self.lr * m1_hat / (np.sqrt(m2_hat) + self.eps)) + self.reg * param.data)
+            param -= ((self.lr * m1_hat / (m2_hat.sqrt() + self.eps)) + self.reg * param)
 
     def reset(self) -> None:
         self._init_parameters()

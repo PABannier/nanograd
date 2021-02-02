@@ -1161,8 +1161,8 @@ class Conv1d(Function):
         is_leaf = not x.requires_grad
 
         if x.device == Device.CPU:
-            out, x_cols = ops_cpu.conv1d_forward(x.data, weight.data, stride)
-            ctx.x_cols = x_cols
+            out, x_reshaped = ops_cpu.conv1d_forward(x.data, weight.data, stride)
+            ctx.x_reshaped = x_reshaped
         else:
             out = ops_gpu.conv1d_forward(ctx.cl_ctx, ctx.cl_queue, x.data, weight.data, stride)
         
@@ -1180,8 +1180,8 @@ class Conv1d(Function):
         stride = ctx.stride
 
         if grad_output.device == Device.CPU:
-            x_cols = ctx.x_cols
-            grad_x, grad_weight = ops_cpu.conv1d_backward(grad_output.data, x, weight.data, x_cols, stride)
+            x_reshaped = ctx.x_reshaped
+            grad_x, grad_weight = ops_cpu.conv1d_backward(grad_output.data, x, x_reshaped, weight.data, stride)
         else:
             grad_x, grad_weight = ops_gpu.conv1d_backward(ctx.cl_ctx, ctx.cl_queue, grad_output.data, 
                                                           x.data, weight.data, stride)
@@ -1196,8 +1196,8 @@ class Conv2d(Function):
         is_leaf = not requires_grad
 
         if x.device == Device.CPU:
-            out, x_cols = ops_cpu.conv2d_forward(x.data, weight, stride)
-            ctx.x_cols = x_cols
+            out, x_reshaped = ops_cpu.conv2d_forward(x.data, weight, stride)
+            ctx.x_reshaped = x_reshaped
         else:
             out = ops_gpu.conv2d_forward(ctx.cl_ctx, ctx.cl_queue, x.data, weight.data, stride)
 
@@ -1216,8 +1216,8 @@ class Conv2d(Function):
         stride = ctx.stride
 
         if grad_output.device == Device.CPU:
-            x_cols = ctx.x_cols
-            grad_x, grad_weight = ops_cpu.conv2d_backward(grad_output.data, x, weight.data, x_cols, stride)
+            x_reshaped = ctx.x_reshaped
+            grad_x, grad_weight = ops_cpu.conv2d_backward(grad_output.data, x, x_reshaped, weight.data, stride)
         else:
             grad_x, grad_weight = ops_gpu.conv2d_backward(ctx.cl_ctx, ctx.cl_queue, grad_output.data, 
                                                                      x.data, weight.data, stride)

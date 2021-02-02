@@ -58,8 +58,8 @@ def test_batchnorm_2d():
     check_model_parameters(model, pytorch_model)
 
 def test_conv_1d():
-    inp = Tensor.normal(0, 1, (5, 3, 30), requires_grad=True)
-    model = nnn.Sequential(nnn.Conv1d(3, 10, 3, 2))
+    inp = Tensor.normal(0, 1, (5, 3, 10), requires_grad=True)
+    model = nnn.Sequential(nnn.Conv1d(3, 10, 3, 2), nnn.Conv1d(10, 32, 2, 2))
     
     inp_torch = create_identical_torch_tensor(inp)
     pytorch_model = get_same_pytorch_model(model)
@@ -76,7 +76,7 @@ def test_conv_1d():
 
 def test_conv_2d():
     inp = Tensor.normal(0, 1, (5, 3, 7, 7), requires_grad=True)
-    model = nnn.Sequential(nnn.Conv2d(3, 10, 3, 2))
+    model = nnn.Sequential(nnn.Conv2d(3, 10, 3, 2), nnn.Conv2d(10, 32, 3, 3))
     
     inp_torch = create_identical_torch_tensor(inp)
     pytorch_model = get_same_pytorch_model(model)

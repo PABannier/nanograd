@@ -4,7 +4,10 @@ import torch
 from nanograd.tensor import Tensor
 
 import nanograd.nn.module as nnn 
+import nanograd.optim.optimizer as optim
+
 import torch.nn as nn
+import torch.optim
 
 
 def check_val(nano_tensor, torch_tensor, atol=1e-5):
@@ -50,6 +53,7 @@ def get_same_pytorch_model(model):
         elif isinstance(l, (nnn.Conv1d, nnn.Conv2d)):
             in_channel, out_channel = l.in_channel, l.out_channel
             stride, padding = l.stride, l.padding[0]
+            print(padding)
             kernel_size = l.kernel_size
             weight, bias = torch.Tensor(l.weight.data), torch.Tensor(l.bias.data)
             torch_layer = (nn.Conv1d(in_channel, out_channel, kernel_size, stride=stride, padding=padding) if isinstance(l, nnn.Conv1d) 
@@ -86,6 +90,25 @@ def get_same_pytorch_model(model):
             raise NotImplementedError('Not supported Nanograd layer')
     
     return nn.Sequential(*layers)
+
+def get_same_pytorch_optimizer(optimizer, torch_model):
+    if isinstance(optimizer, optim.SGD):
+        lr, mom = float(optimizer.lr), float(optimizer.momentum)
+        return torch.optim.SGD(torch_model.parameters(), lr, mom)
+
+    elif isinstance(optimizer, optim.Adam):
+        lr, beta1 = float(optimizer.lr), float(optimizer.beta1)
+        beta2, eps = float(optimizer.beta2), float(optimizer.eps)
+        return torch.optim.Adam(torch_model.parameters(), lr, (beta1, beta2), eps)
+    
+    elif isinstance(optimizer, optim.AdamW):
+        lr, reg = float(optimizer.lr), float(optimizer.reg)
+        beta1, beta2 = float(optimizer.beta1), float(optimizer.beta2)
+        eps = float(optimizer.eps)
+        return torch.optim.AdamW(torch_model.parameters(), lr, (beta1, beta2), eps, reg)
+    
+    else:
+        raise NotImplementedError('Not supported Nanograd optimizer')
 
 def check_model_parameters(ng_model, pytorch_model, atol=1e-5):
     pytorch_layers = [module for module in pytorch_model.modules() if type(module) != nn.Sequential]

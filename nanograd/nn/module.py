@@ -387,8 +387,7 @@ class Conv1d(Module):
             Module (nn.module.Module)
     """
     def __init__(self, in_channel:int, out_channel:int, kernel_size:int, stride:int=1, 
-                 padding:Union[tuple, int]=(0, 0), weight_initialization:str="kaiming_normal",
-                 with_bias:bool=True) -> None:
+                 padding:Union[tuple, int]=(0, 0), weight_initialization:str="kaiming_normal") -> None:
         super().__init__()
         assert isinstance(padding, (tuple, int)), 'Wrong padding type. Must be integer or tuple of integers'
         if isinstance(padding, (int)): padding = (padding, padding)
@@ -398,15 +397,10 @@ class Conv1d(Module):
         self.stride, self.padding = stride, padding
         self.kernel_size = kernel_size
         self.weight_initialization = weight_initialization
-        self.with_bias = with_bias
 
         shape = (self.out_channel, self.in_channel, self.kernel_size)
-        self.weight = init_weights(shape, self.weight_initialization, 
-                                   requires_grad=True, is_parameter=True, name="conv_weight_1d")
-
-        if self.with_bias:
-            self.bias = Tensor.zeros(out_channel, requires_grad=True, 
-                                     is_parameter=True, name="conv_bias_1d")
+        self.weight = init_weights(shape, self.weight_initialization, requires_grad=True, is_parameter=True, name="conv_weight_1d")
+        self.bias = Tensor.zeros(out_channel, requires_grad=True, is_parameter=True, name="conv_bias_1d")
 
     def forward(self, x:Tensor) -> Tensor:
         """Forward pass
@@ -417,10 +411,7 @@ class Conv1d(Module):
                 Tensor: (batch_size, out_channel, output_length)
         """
         x_padded = x.pad1d(self.padding)
-
-        if self.with_bias:
-            return x_padded.conv1d(self.weight, self.stride) + self.bias.reshape(shape=[1, -1, 1])
-        return x_padded.conv1d(self.weight, self.stride)
+        return x_padded.conv1d(self.weight, self.stride) + self.bias.reshape(shape=[1, -1, 1])
 
 
 class Conv2d(Module):

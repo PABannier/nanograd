@@ -206,10 +206,9 @@ def test_mul_broadcast_3():
     check_val_and_grad(b, b_torch)
     check_val_and_grad(a, a_torch)
 
-
 def test_div():
-    a = Tensor.randn(30, 40, requires_grad=True)
-    b = Tensor.randn(30, 40, requires_grad=True)
+    a = Tensor.randn(3, 4, requires_grad=True)
+    b = Tensor.randn(3, 4, requires_grad=True)
     a_torch, b_torch = create_identical_torch_tensor(a, b)
 
     c = a / b
@@ -237,6 +236,29 @@ def test_div_broadcast():
     check_val_and_grad(a, a_torch)
     check_val_and_grad(b, b_torch)
     check_val_and_grad(c, c_torch)
+    
+def test_div_broadcast():
+    a = Tensor.normal(30, 2, (3, 3, 3), requires_grad=True)
+    b = Tensor.normal(30, 2, (3, 3, 3), requires_grad=True)
+    a_torch, b_torch = create_identical_torch_tensor(a, b)
+
+    c = a / 16
+    c_torch = a_torch / 16
+
+    d = b * 4
+    d_torch = b_torch * 4
+
+    e = c.sum() / d.sum() 
+    e_torch = c_torch.sum() / d_torch.sum()
+
+    e.backward()
+    e_torch.sum().backward()
+
+    check_val_and_grad(a, a_torch)
+    check_val_and_grad(b, b_torch)
+    check_val_and_grad(c, c_torch)
+    check_val_and_grad(d, d_torch)
+    check_val_and_grad(e, e_torch)
 
 
 def test_reshape():

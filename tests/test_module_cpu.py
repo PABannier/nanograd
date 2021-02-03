@@ -57,7 +57,7 @@ def test_batchnorm_2d():
     check_val_and_grad(inp, inp_torch)
     check_model_parameters(model, pytorch_model)
 
-def test_conv_1d():
+def test_conv_1d_no_padding():
     inp = Tensor.normal(0, 1, (5, 3, 10), requires_grad=True)
     model = nnn.Sequential(nnn.Conv1d(3, 10, 3, 2), nnn.Conv1d(10, 32, 2, 2))
     
@@ -74,7 +74,24 @@ def test_conv_1d():
     check_val_and_grad(inp, inp_torch)
     check_model_parameters(model, pytorch_model)
 
-def test_conv_2d():
+def test_conv_1d_with_padding():
+    inp = Tensor.normal(0, 1, (5, 3, 10), requires_grad=True)
+    model = nnn.Sequential(nnn.Conv1d(3, 10, 3, 2, 3), nnn.Conv1d(10, 32, 2, 2, 3))
+    
+    inp_torch = create_identical_torch_tensor(inp)
+    pytorch_model = get_same_pytorch_model(model)
+
+    y = model(inp)
+    y_torch = pytorch_model(inp_torch)
+
+    y.backward()
+    y_torch.sum().backward()
+
+    check_val_and_grad(y, y_torch)
+    check_val_and_grad(inp, inp_torch)
+    check_model_parameters(model, pytorch_model)
+
+def test_conv_2d_no_padding():
     inp = Tensor.normal(0, 1, (5, 3, 7, 7), requires_grad=True)
     model = nnn.Sequential(nnn.Conv2d(3, 10, 3, 2), nnn.Conv2d(10, 32, 3, 3))
     
@@ -90,6 +107,23 @@ def test_conv_2d():
     check_val_and_grad(y, y_torch)
     check_val_and_grad(inp, inp_torch)
     check_model_parameters(model, pytorch_model)
+
+def test_conv_2d_with_padding():
+    inp = Tensor.normal(0, 1, (5, 3, 7, 7), requires_grad=True)
+    model = nnn.Sequential(nnn.Conv2d(3, 10, 3, 2, 3), nnn.Conv2d(10, 32, 3, 3, 2))
+    
+    inp_torch = create_identical_torch_tensor(inp)
+    pytorch_model = get_same_pytorch_model(model)
+
+    y = model(inp)
+    y_torch = pytorch_model(inp_torch)
+
+    y.backward()
+    y_torch.sum().backward()
+
+    check_val_and_grad(y, y_torch)
+    check_val_and_grad(inp, inp_torch)
+    check_model_parameters(model, pytorch_model, atol=1e-4)
 
 def test_maxpool_1d():
     inp = Tensor.normal(0, 1, (5, 3, 10), requires_grad=True)

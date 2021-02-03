@@ -203,7 +203,6 @@ def test_div():
     check_val_and_grad(b, b_torch)
     check_val_and_grad(a, a_torch)
 
-
 def test_div_broadcast():
     a = Tensor.normal(30, 2, (3, 3, 3), requires_grad=True)
     b = Tensor.normal(30, 2, (3, 3, 3), requires_grad=True)
@@ -230,7 +229,6 @@ def test_div_broadcast():
     check_val_and_grad(c, c_torch)
     check_val_and_grad(d, d_torch)
     check_val_and_grad(e, e_torch)
-
 
 def test_relu():
     a = Tensor.normal(0, 2, (8, 3, 10, 10), requires_grad=True)

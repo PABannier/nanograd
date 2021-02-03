@@ -460,7 +460,7 @@ class Tensor:
         Returns:
             Tensor: Padded signal
         """
-        return self[:, :, -pad[0]:self.shape[2]+pad[1]]
+        return self[:, :, -pad[0]:int(self.shape[2])+pad[1]]
 
     def pad2d(self, pad:tuple):
         """Padding for two-dimensional images
@@ -472,7 +472,7 @@ class Tensor:
         Returns:
             Tensor: Padded signal
         """
-        return self[:, :, -pad[2]:self.shape[2]+pad[3], -pad[0]:self.shape[3]+pad[1]]
+        return self[:, :, -pad[2]:int(self.shape[2])+pad[3], -pad[0]:int(self.shape[3])+pad[1]]
 
     def conv1d(self, weight, stride:int):
         """1d convolution

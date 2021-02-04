@@ -334,11 +334,11 @@ class Tensor:
     def T(self):
         return Transpose.apply(self, cl_ctx=cl_ctx, cl_queue=cl_queue)
 
-    def max(self, axis=None, keepdims=False):
-        return Max.apply(self, axis, keepdims, cl_ctx=cl_ctx, cl_queue=cl_queue)
+    def max(self, axis=None):
+        return Max.apply(self, axis, cl_ctx=cl_ctx, cl_queue=cl_queue)
     
-    def min(self, axis=None, keepdims=False):
-        return Min.apply(self, axis, keepdims, cl_ctx=cl_ctx, cl_queue=cl_queue)
+    def min(self, axis=None):
+        return Min.apply(self, axis, cl_ctx=cl_ctx, cl_queue=cl_queue)
     
     def log(self):
         return Log.apply(self, cl_ctx=cl_ctx, cl_queue=cl_queue)
@@ -375,6 +375,12 @@ class Tensor:
     def tanh(self):
         return Tanh.apply(self, cl_ctx=cl_ctx, cl_queue=cl_queue)
     
+    def log_softmax(self):
+        batch_size, num_classes = self.shape
+        a = self.max(axis=1).reshape((batch_size, 1)) # Log-exp trick
+        out = self - a - (self - a).exp().sum(axis=1).log().reshape((batch_size, 1))
+        return out
+
     # ****************************************
     # ********* Conv/Pool operations *********
     # ****************************************
@@ -412,44 +418,43 @@ class Tensor:
         """
         return self._pool1d(kernel_size).mean(axis=3)
         
-    def _pool2d(self, field_height:int, field_width:int):
+    def _pool2d(self, pool_size:tuple):
         """
             2-dimensional pooling operation
 
             Args:
-                field_height (int): height of the pooling kernel
-                field_width (int): width of the pooling kernel
+                pool_size (tuple): height of the pooling kernel
             
             Returns:
                 x_reshaped (Tensor): pooled Tensor
         """
         x_unpadded = self[:, :, 
-            :self.shape[2] - self.shape[2] % field_height, 
-            :self.shape[3] - self.shape[3] % field_width]
+            :self.shape[2] - self.shape[2] % pool_size[0], 
+            :self.shape[3] - self.shape[3] % pool_size[1]]
         
         shape = (x_unpadded.shape[0], x_unpadded.shape[1], 
-                 x_unpadded.shape[2] // field_height, field_height, 
-                 x_unpadded.shape[3] // field_width, field_width)
+                 x_unpadded.shape[2] // pool_size[0], pool_size[0], 
+                 x_unpadded.shape[3] // pool_size[1], pool_size[1])
 
         x_reshaped = x_unpadded.reshape(shape=shape)
 
         return x_reshaped
     
-    def max_pool2d(self, kernel_size:tuple=(2, 2)):
+    def max_pool2d(self, pool_size:tuple=(2, 2)):
         """MaxPooling2d operation
         
             Args:
                 kernel_size (tuple): Kernel length for pooling operation
         """
-        return self._pool2d(*kernel_size).max(axis=5).max(axis=3)
+        return self._pool2d(pool_size).max(axis=(3, 5))
     
-    def avg_pool2d(self, kernel_size:tuple=(2, 2)):
+    def avg_pool2d(self, pool_size:tuple=(2, 2)):
         """AvgPooling2d operation
         
             Args:
                 kernel_size (tuple): Kernel length for pooling operation
         """
-        return self._pool2d(*kernel_size).mean(axis=(3, 5))
+        return self._pool2d(pool_size).mean(axis=(3, 5))
 
     def pad1d(self, pad:tuple):
         """Padding for one-dimensional signal
@@ -520,27 +525,6 @@ class Tensor:
 # ****************************************
 # ************** Functional **************
 # ****************************************
-
-def cross_entropy(predicted:Tensor, target:Tensor) -> Tensor:
-    """Calculates Cross Entropy Loss between logits and true labels.
-       Used in the CrossEntropy module
-
-    Args:
-        predicted (Tensor): Logits
-        target (Tensor): Target classes
-
-    Returns:
-        Tensor: Loss in a Tensor of shape ()
-    """
-    batch_size, num_classes = predicted.shape
-    labels = target.one_hot(num_classes)
-
-    a = predicted.max(axis=1).reshape((batch_size, 1))
-    log_softmax = predicted - a - (predicted - a).exp().sum(axis=1).log().reshape((batch_size, 1))
-    nll_loss = - (log_softmax * labels).sum() / batch_size
-
-    return nll_loss
-
 
 class OneHot(Function):
     @staticmethod
@@ -726,7 +710,7 @@ class Reshape(Function):
 
 class Max(Function):
     @staticmethod
-    def forward(ctx, a, axis=None, keepdims=False):
+    def forward(ctx, a, axis=None):
         axis = [axis] if type(axis) == int else axis
 
         ctx.save_for_backward(a)
@@ -735,10 +719,9 @@ class Max(Function):
         is_leaf = not requires_grad
 
         if a.device == Device.CPU:
-            out_data = ops_cpu.max_forward(a.data, axis, keepdims)
+            out_data = ops_cpu.max_forward(a.data, axis)
         else:
-            out_data = ops_gpu.max_forward(ctx.cl_ctx, ctx.cl_queue, 
-                                           a.data, axis, keepdims)
+            out_data = ops_gpu.max_forward(ctx.cl_ctx, ctx.cl_queue, a.data, axis)
         
         ctx.axis, ctx.out = axis, out_data
 
@@ -765,7 +748,7 @@ class Max(Function):
 
 class Min(Function):
     @staticmethod
-    def forward(ctx, a, axis=None, keepdims=False):
+    def forward(ctx, a, axis=None):
         axis = [axis] if type(axis) == int else axis
 
         ctx.save_for_backward(a)
@@ -774,9 +757,9 @@ class Min(Function):
         is_leaf = not requires_grad
 
         if a.device == Device.CPU:
-            out_data = ops_cpu.min_forward(a.data, axis, keepdims)
+            out_data = ops_cpu.min_forward(a.data, axis)
         else:
-            out_data = ops_gpu.min_forward(ctx.cl_ctx, ctx.cl_queue, a.data, axis, keepdims)
+            out_data = ops_gpu.min_forward(ctx.cl_ctx, ctx.cl_queue, a.data, axis)
         
         ctx.axis, ctx.out = axis, out_data
 

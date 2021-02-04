@@ -430,9 +430,8 @@ class Conv2d(Module):
         Inherits from:
             Module (nn.module.Module)
     """
-    def __init__(self, in_channel:int, out_channel:int, kernel_size:int, stride:int=1, 
-                 padding:tuple=(0, 0, 0, 0), weight_initialization:str="kaiming_normal",
-                 with_bias:bool=True) -> None:
+    def __init__(self, in_channel:int, out_channel:int, kernel_size:tuple, stride:tuple=1, 
+                 padding:tuple=(0, 0, 0, 0), weight_initialization:str="kaiming_normal") -> None:
         super().__init__()
         assert isinstance(padding, (tuple, int)), 'Wrong padding type. Must be integer or tuple of integers'
         if isinstance(padding, (int)): padding = (padding, padding, padding, padding)
@@ -441,16 +440,10 @@ class Conv2d(Module):
         self.kernel_size = kernel_size if isinstance(kernel_size, tuple) else (kernel_size, kernel_size)
         self.stride, self.padding = stride, padding
         self.weight_initialization = weight_initialization
-        self.with_bias = with_bias
 
         shape = (self.out_channel, self.in_channel, *self.kernel_size)
-
-        self.weight = init_weights(shape, self.weight_initialization, requires_grad=True, 
-                                   is_parameter=True, name="conv_weight_2d")
-        
-        if self.with_bias:
-            self.bias = Tensor.zeros(self.out_channel, requires_grad=True, 
-                                    is_parameter=True, name="conv_bias_2d")
+        self.weight = init_weights(shape, self.weight_initialization, requires_grad=True, is_parameter=True, name="conv_weight_2d")
+        self.bias = Tensor.zeros(self.out_channel, requires_grad=True, is_parameter=True, name="conv_bias_2d")
     
     def forward(self, x:Tensor) -> Tensor:
         """
@@ -460,25 +453,22 @@ class Conv2d(Module):
                 Tensor: (batch_size, out_channel, output_dim1, output_dim2)
         """
         x_padded = x.pad2d(self.padding)
-        if self.with_bias:
-            return x_padded.conv2d(self.weight, self.stride) + self.bias.reshape(shape=[1, -1, 1, 1])
-        return x_padded.conv2d(self.weight, self.stride)
+        return x_padded.conv2d(self.weight, self.stride) + self.bias.reshape(shape=[1, -1, 1, 1])
 
 
 class MaxPool1d(Module):
     """Performs a max pooling operation after a 1d convolution
         
         Args:
-            kernel_size (int): Kernel size
+            pool_size (int): Kernel size
             stride (int): Stride
         
         Inherits from:
             Module (nn.module.Module)
     """
-    def __init__(self, kernel_size:int, stride:int=2) -> None:
+    def __init__(self, pool_size:int) -> None:
         super().__init__()
-        self.kernel_size = kernel_size
-        self.stride = stride
+        self.pool_size = pool_size
     
     def forward(self, x:Tensor) -> Tensor:
         """Performs a max pooling operation after a 1d convolution
@@ -489,7 +479,7 @@ class MaxPool1d(Module):
         Returns:
             Tensor: (batch_size, channel, out_width, out_height)
         """
-        out = x.max_pool1d(self.kernel_size)
+        out = x.max_pool1d(self.pool_size)
         out.name = 'mpool1d_res'
         return out
 
@@ -498,16 +488,15 @@ class AvgPool1d(Module):
     """Performs an average pooling operation after a 1d convolution
         
         Args:
-            kernel_size (int): Kernel size
+            pool_size (int): Kernel size
             stride (int): Stride
         
         Inherits from:
             Module (nn.module.Module)
     """
-    def __init__(self, kernel_size:int, stride:int=2) -> None:
+    def __init__(self, pool_size:int) -> None:
         super().__init__()
-        self.kernel_size = kernel_size
-        self.stride = stride
+        self.pool_size = pool_size
     
     def forward(self, x:Tensor) -> Tensor:
         """Performs an average pooling operation after a 1d convolution
@@ -518,7 +507,7 @@ class AvgPool1d(Module):
         Returns:
             Tensor: (batch_size, channel, out_width, out_height)
         """
-        out = x.avg_pool1d(self.kernel_size)
+        out = x.avg_pool1d(self.pool_size)
         out.name = 'avgpool1d_res'
         return out
 
@@ -527,16 +516,15 @@ class MaxPool2d(Module):
     """Performs a max pooling operation after a 2d convolution
     
         Args:
-            kernel_size (tuple): Kernel size
+            pool_size (tuple): Kernel size
             stride (int): Stride
         
         Inherits from:
             Module (nn.module.Module)
     """
-    def __init__(self, kernel_size:tuple, stride:int=2) -> None:
+    def __init__(self, pool_size:tuple) -> None:
         super().__init__()
-        self.kernel_size = kernel_size if isinstance(kernel_size, tuple) else (kernel_size, kernel_size)
-        self.stride = stride
+        self.pool_size = pool_size if isinstance(pool_size, tuple) else (pool_size, pool_size)
     
     def forward(self, x:Tensor) -> Tensor:
         """
@@ -546,7 +534,7 @@ class MaxPool2d(Module):
             Returns:
                 Tensor: (batch_size, channel, out_width, out_height)
         """
-        out = x.max_pool2d(self.kernel_size)
+        out = x.max_pool2d(self.pool_size)
         out.name = 'mpool2d_res'
         return out
 
@@ -555,16 +543,15 @@ class AvgPool2d(Module):
     """Performs an average pooling operation after a 2d convolution
 
         Args:
-            kernel_size (tuple): Kernel size
+            pool_size (tuple): Kernel size
             stride (int): Stride
         
         Inherits from:
             Module (nn.module.Module)
     """
-    def __init__(self, kernel_size:tuple, stride:int=2) -> None:
+    def __init__(self, pool_size:tuple) -> None:
         super().__init__()
-        self.kernel_size = kernel_size if isinstance(kernel_size, tuple) else (kernel_size, kernel_size)
-        self.stride = stride
+        self.pool_size = pool_size if isinstance(pool_size, tuple) else (pool_size, pool_size)
     
     def forward(self, x:Tensor) -> Tensor:
         """
@@ -574,7 +561,7 @@ class AvgPool2d(Module):
             Returns:
                 Tensor: (batch_size, channel, out_width, out_channel)
         """
-        out = x.avg_pool2d(self.kernel_size)
+        out = x.avg_pool2d(self.pool_size)
         out.name = 'avgpool2d_res'
         return out
 
@@ -653,32 +640,29 @@ class Dropout(Module):
         return x * Tensor(1 - self.p, name='dropout_prob', is_parameter=True)
 
 
-class CrossEntropyLoss(Module):
-    """CrossEntropyLoss layer
+class NLLLoss(Module):
+    """Negative Log-likelihood loss. 
+    
+       Useful for multi-class classifiation problem.
 
-        During implementation of a model, you can either choose a CrossEntropyLoss layer
-        or call the CrossEntropy function from nn.functional.
-        
-        >>> criterion = CrossEntropyLoss()
-        >>> criterion(outputs, labels)
-        3.241
-
-        Inherits from:
-            Module (nn.module.Module)
+       The input given through a forward call is expected to contain the log-probabilities
+       of each class. To obtain these log-probabilities, simply call the log-softmax method
+       on the output vector of your model.
     """
     def __init__(self) -> None:
         pass
 
-    def forward(self, predicted:Tensor, target:Tensor) -> Tensor:
+    def forward(self, log_probs:Tensor, target:Tensor) -> Tensor:
         """Forward pass
 
-           Args:
-                predicted (Tensor): (batch_size, num_classes)
-                target (Tensor): (batch_size,)
-           Returns:
-                Tensor: loss, stored as a float in a tensor 
+        Args:
+            log_probs (Tensor): (batch_size, num_classes)
+            target (Tensor): (batch_size, 1)
+
+        Returns:
+            Tensor: loss, stored as a float in a Tensor object 
         """
-        return tensor.cross_entropy(predicted, target)
+        return - (log_probs * target).mean()
     
 
 class MSELoss(Module):

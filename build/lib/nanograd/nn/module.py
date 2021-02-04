@@ -1,6 +1,6 @@
 from nanograd.tensor import Tensor
+import nanograd.tensor as tensor
 from nanograd.device import Device
-import nanograd.nn.functional as F
 
 import numpy as np
 
@@ -264,11 +264,11 @@ class BatchNorm1d(Module):
         super().__init__()
         self.num_features = num_features
 
-        self.eps = Tensor(eps, is_parameter=False)
-        self.momentum = Tensor(momentum, is_parameter=False)
+        self.eps = eps
+        self.momentum = momentum
 
-        self.gamma = Tensor.ones((self.num_features,), requires_grad=True, is_parameter=True, name="bn_gamma")
-        self.beta = Tensor.zeros((self.num_features,), requires_grad=True, is_parameter=True, name="bn_beta")
+        self.weight = Tensor.ones((self.num_features,), requires_grad=True, is_parameter=True, name="bn_gamma")
+        self.bias = Tensor.zeros((self.num_features,), requires_grad=True, is_parameter=True, name="bn_beta")
         
         self.running_mean = Tensor.zeros((self.num_features,), requires_grad=False, is_parameter=False, name="bn_running_mean")
         self.running_var = Tensor.ones((self.num_features,), requires_grad=False, is_parameter=False, name="bn_running_var")
@@ -285,8 +285,8 @@ class BatchNorm1d(Module):
             batch_var = ((x - batch_mean.reshape(shape=[1, -1])) ** 2).mean(0)
             batch_empirical_var = ((x - batch_mean.reshape(shape=[1, -1])) ** 2).sum(0) / (x.shape[0] - 1)
 
-            self.running_mean = (1 - self.momentum) * self.running_mean + self.momentum * batch_mean
-            self.running_var = (1 - self.momentum) * self.running_var + self.momentum * batch_empirical_var
+            self.running_mean = (1. - self.momentum) * self.running_mean + self.momentum * batch_mean
+            self.running_var = (1. - self.momentum) * self.running_var + self.momentum * batch_empirical_var
 
             return self._normalize(x, batch_mean, batch_var)
         else:
@@ -304,7 +304,7 @@ class BatchNorm1d(Module):
             Tensor: Normalized tensor
         """
         x_hat = (x - mean.reshape(shape=[1, -1])) / (var + self.eps).sqrt().reshape(shape=[1, -1])
-        out = self.gamma.reshape(shape=[1, -1]) * x_hat + self.beta.reshape(shape=[1, -1])
+        out = self.weight.reshape(shape=[1, -1]) * x_hat + self.bias.reshape(shape=[1, -1])
         out.name = "bn_1d_res"
         return out
 
@@ -320,18 +320,18 @@ class BatchNorm2d(Module):
         Inherits from:
             Module (nn.module.Module)
     """
-    def __init__(self, size:int, eps:float=1e-5, momentum:float=0.1) -> None:
+    def __init__(self, num_features:int, eps:float=1e-5, momentum:float=0.1) -> None:
         super().__init__()
-        self.size = size
+        self.num_features = num_features
 
-        self.eps = Tensor(eps, is_parameter=False)
-        self.momentum = Tensor(momentum, is_parameter=False)
+        self.eps = eps
+        self.momentum = momentum
 
-        self.gamma = Tensor.ones(self.size, requires_grad=True, is_parameter=True, name="bn_gamma")
-        self.beta = Tensor.zeros(self.size, requires_grad=True, is_parameter=True, name="bn_beta")
+        self.weight = Tensor.ones(self.num_features, requires_grad=True, is_parameter=True, name="bn_gamma")
+        self.bias = Tensor.zeros(self.num_features, requires_grad=True, is_parameter=True, name="bn_beta")
 
-        self.running_mean = Tensor.zeros(self.size, requires_grad=False, is_parameter=False, name="bn_running_mean")
-        self.running_var = Tensor.ones(self.size, requires_grad=False, is_parameter=False, name="bn_running_var")
+        self.running_mean = Tensor.zeros(self.num_features, requires_grad=False, is_parameter=False, name="bn_running_mean")
+        self.running_var = Tensor.ones(self.num_features, requires_grad=False, is_parameter=False, name="bn_running_var")
 
     def forward(self, x:Tensor) -> Tensor:
         """Forward pass
@@ -344,10 +344,11 @@ class BatchNorm2d(Module):
         if self.is_train == True: 
             batch_mean = x.mean(axis=(0, 2, 3)) 
             batch_var = ((x - batch_mean.reshape(shape=[1, -1, 1, 1])) ** 2).mean(axis=(0, 2, 3)) 
-            batch_empirical_var = ((x - batch_mean.reshape(shape=[1, -1, 1, 1])) ** 2).sum(axis=(0, 2, 3)) / (x.shape[0] - 1) 
+            batch_empirical_var = (((x - batch_mean.reshape(shape=[1, -1, 1, 1])) ** 2).sum(axis=(0, 2, 3)) / 
+                                  (np.prod([x.shape[i] for i in [0, 2, 3]])-1))
 
-            self.running_mean = (1 - self.momentum) * self.running_mean + self.momentum * batch_mean
-            self.running_var = (1 - self.momentum) * self.running_var + self.momentum * batch_empirical_var
+            self.running_mean = (1. - self.momentum) * self.running_mean + self.momentum * batch_mean
+            self.running_var = (1. - self.momentum) * self.running_var + self.momentum * batch_empirical_var
 
             return self._normalize(x, batch_mean, batch_var)
         else:
@@ -365,7 +366,7 @@ class BatchNorm2d(Module):
                 Tensor: Normalized tensor
         """
         x_hat = (x - mean.reshape(shape=[1, -1, 1, 1])) / (var + self.eps).sqrt().reshape(shape=[1, -1, 1, 1])
-        out = self.gamma.reshape(shape=[1, -1, 1, 1]) * x_hat + self.beta.reshape(shape=[1, -1, 1, 1])
+        out = self.weight.reshape(shape=[1, -1, 1, 1]) * x_hat + self.bias.reshape(shape=[1, -1, 1, 1])
         out.name = 'bn_2d_res'
         return out
 
@@ -386,8 +387,7 @@ class Conv1d(Module):
             Module (nn.module.Module)
     """
     def __init__(self, in_channel:int, out_channel:int, kernel_size:int, stride:int=1, 
-                 padding:Union[tuple, int]=(0, 0), weight_initialization:str="kaiming_normal",
-                 with_bias:bool=True) -> None:
+                 padding:Union[tuple, int]=(0, 0), weight_initialization:str="kaiming_normal") -> None:
         super().__init__()
         assert isinstance(padding, (tuple, int)), 'Wrong padding type. Must be integer or tuple of integers'
         if isinstance(padding, (int)): padding = (padding, padding)
@@ -397,15 +397,10 @@ class Conv1d(Module):
         self.stride, self.padding = stride, padding
         self.kernel_size = kernel_size
         self.weight_initialization = weight_initialization
-        self.with_bias = with_bias
 
         shape = (self.out_channel, self.in_channel, self.kernel_size)
-        self.weight = init_weights(shape, self.weight_initialization, 
-                                   requires_grad=True, is_parameter=True, name="conv_weight_1d")
-
-        if self.with_bias:
-            self.bias = Tensor.zeros(out_channel, requires_grad=True, 
-                                     is_parameter=True, name="conv_bias_1d")
+        self.weight = init_weights(shape, self.weight_initialization, requires_grad=True, is_parameter=True, name="conv_weight_1d")
+        self.bias = Tensor.zeros(out_channel, requires_grad=True, is_parameter=True, name="conv_bias_1d")
 
     def forward(self, x:Tensor) -> Tensor:
         """Forward pass
@@ -416,10 +411,7 @@ class Conv1d(Module):
                 Tensor: (batch_size, out_channel, output_length)
         """
         x_padded = x.pad1d(self.padding)
-
-        if self.with_bias:
-            return x_padded.conv1d(self.weight, self.stride) + self.bias.reshape(shape=[1, -1, 1])
-        return x_padded.conv1d(self.weight, self.stride)
+        return x_padded.conv1d(self.weight, self.stride) + self.bias.reshape(shape=[1, -1, 1])
 
 
 class Conv2d(Module):
@@ -471,6 +463,64 @@ class Conv2d(Module):
         if self.with_bias:
             return x_padded.conv2d(self.weight, self.stride) + self.bias.reshape(shape=[1, -1, 1, 1])
         return x_padded.conv2d(self.weight, self.stride)
+
+
+class MaxPool1d(Module):
+    """Performs a max pooling operation after a 1d convolution
+        
+        Args:
+            kernel_size (int): Kernel size
+            stride (int): Stride
+        
+        Inherits from:
+            Module (nn.module.Module)
+    """
+    def __init__(self, kernel_size:int, stride:int=2) -> None:
+        super().__init__()
+        self.kernel_size = kernel_size
+        self.stride = stride
+    
+    def forward(self, x:Tensor) -> Tensor:
+        """Performs a max pooling operation after a 1d convolution
+
+        Args:
+            x (Tensor): (batch_size, channel, in_width, in_height)
+
+        Returns:
+            Tensor: (batch_size, channel, out_width, out_height)
+        """
+        out = x.max_pool1d(self.kernel_size)
+        out.name = 'mpool1d_res'
+        return out
+
+
+class AvgPool1d(Module):
+    """Performs an average pooling operation after a 1d convolution
+        
+        Args:
+            kernel_size (int): Kernel size
+            stride (int): Stride
+        
+        Inherits from:
+            Module (nn.module.Module)
+    """
+    def __init__(self, kernel_size:int, stride:int=2) -> None:
+        super().__init__()
+        self.kernel_size = kernel_size
+        self.stride = stride
+    
+    def forward(self, x:Tensor) -> Tensor:
+        """Performs an average pooling operation after a 1d convolution
+
+        Args:
+            x (Tensor): (batch_size, channel, in_width, in_height)
+
+        Returns:
+            Tensor: (batch_size, channel, out_width, out_height)
+        """
+        out = x.avg_pool1d(self.kernel_size)
+        out.name = 'avgpool1d_res'
+        return out
 
 
 class MaxPool2d(Module):
@@ -628,7 +678,7 @@ class CrossEntropyLoss(Module):
            Returns:
                 Tensor: loss, stored as a float in a tensor 
         """
-        return F.cross_entropy(predicted, target)
+        return tensor.cross_entropy(predicted, target)
     
 
 class MSELoss(Module):
@@ -714,7 +764,7 @@ class LeakyReLU(Module):
             Returns:
                 Tensor: (batch_size, num_features)
         """
-        return x.relu() + self.alpha * (-x).relu()
+        return x.relu() - self.alpha * (-x).relu()
     
 
 class Sigmoid(Module):
@@ -759,37 +809,6 @@ class Tanh(Module):
                 Tensor: (batch_size, num_features)
         """
         return x.tanh()
-
-
-class ELU(Module):
-    r"""
-        ELU Activation Layer
-        
-        Applies an ELU (Exponential Linear Unit) activation function 
-        to the input
-
-        Alpha is learnt by gradient descent
-
-        Inherits from:
-            Module (nn.module.Module)
-    """
-    def __init__(self, alpha:float=1.0) -> None:
-        super().__init__()
-
-        self.alpha = Tensor(alpha, requires_grad=True, is_parameter=True, name="elu_alpha")
-    
-    def forward(self, x:Tensor) -> Tensor:
-        """
-            Args:
-                x (Tensor): (batch_size, num_features)
-            Returns:
-                Tensor: (batch_size, num_features)
-        """
-        pos_part = x.relu()
-        neg_part = (-x).relu()
-
-        return pos_part + self.alpha * (neg_part.exp() - 1)
-
 
 class Swish(Module):
     r"""

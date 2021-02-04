@@ -554,7 +554,8 @@ def min_backward(ctx, queue, grad_output, inp, out, axis):
 def sum_backward(ctx, queue, grad_output, a, axis):
     axis = [axis] if type(axis) == int else axis
     shape = [1 if axis is None or i in axis else a.shape[i] for i in range(len(a.shape))]
-    return GPUBuffer(ctx, shape, hostbuf=grad_output)
+    output = GPUBuffer(ctx, shape, hostbuf=grad_output)
+    return element_wise_binary_op(ctx, queue, 'a+b', output, GPUBuffer(ctx, a.shape))
 
 def conv1d_backward(ctx, queue, grad_output, x, weight, stride):
     batch_size, _, out_length = grad_output.shape

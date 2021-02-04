@@ -2,6 +2,7 @@ import numpy as np
 
 import torch
 from nanograd.tensor import Tensor
+from nanograd.device import Device
 
 import nanograd.nn.module as nnn 
 import nanograd.optim.optimizer as optim
@@ -10,17 +11,17 @@ import torch.nn as nn
 import torch.optim
 
 
-def check_val(nano_tensor, torch_tensor, atol=1e-5):
-    np.testing.assert_allclose(nano_tensor.data, torch_tensor.data.numpy(), atol=atol)
+def check_val(nano_tensor, torch_tensor, atol=1e-5, rtol=1e-3):
+    np.testing.assert_allclose(nano_tensor.data, torch_tensor.data.numpy(), atol=atol, rtol=rtol)
 
-def check_grad(nano_tensor, torch_tensor, atol=1e-5):
+def check_grad(nano_tensor, torch_tensor, atol=1e-5, rtol=1e-3):
     if nano_tensor.grad is not None and torch_tensor.grad is not None:
-        np.testing.assert_allclose(nano_tensor.grad.data, torch_tensor.grad.numpy(), atol=atol)
+        np.testing.assert_allclose(nano_tensor.grad.data, torch_tensor.grad.numpy(), atol=atol, rtol=rtol)
 
-def check_val_and_grad(nano_tensor, torch_tensor, atol=1e-5, atol_grad=1e-5):
+def check_val_and_grad(nano_tensor, torch_tensor, atol=1e-6, rtol=1e-3, atol_grad=1e-6, rtol_grad=1e-3):
     assert type(nano_tensor).__name__ == "Tensor", f"Expected Tensor object, got {type(nano_tensor).__name__}"
-    check_val(nano_tensor, torch_tensor, atol=atol)
-    check_grad(nano_tensor, torch_tensor, atol=atol_grad)
+    check_val(nano_tensor, torch_tensor, atol=atol, rtol=rtol)
+    check_grad(nano_tensor, torch_tensor, atol=atol_grad, rtol=rtol_grad)
 
 def create_identical_torch_tensor(*args):
     torch_tensors = []
@@ -28,6 +29,36 @@ def create_identical_torch_tensor(*args):
         t = torch.tensor(arg.data, requires_grad=arg.requires_grad, dtype=torch.float32)
         torch_tensors.append(t)
     return tuple(torch_tensors) if len(torch_tensors) > 1 else torch_tensors[0]
+
+def make_test_ops(shapes, fcn_nanograd, fcn_torch=None, test_backward:bool=True, atol:float=1e-6, atol_grad:float=1e-6, device=Device.CPU):
+    np.random.seed(0)
+    torch.manual_seed(0)
+
+    fcn_torch = fcn_nanograd if fcn_torch is None else fcn_torch
+
+    tensors = []
+    pytorch_tensors = []
+    for shape in shapes:
+        t = Tensor.normal(30, 1, shape, requires_grad=test_backward)
+        pt = torch.tensor(t.data, requires_grad=test_backward, dtype=torch.float32)
+
+        if device == Device.GPU: 
+            t.gpu()
+
+        tensors.append(t)
+        pytorch_tensors.append(pt)
+
+    out = fcn_nanograd(*tensors)
+    out_torch = fcn_torch(*pytorch_tensors)
+
+    if test_backward:
+       out.backward()
+       out_torch.sum().backward()
+    
+    check_val(out, out_torch, atol=atol)
+
+    for tensor, pytorch_tensor in zip(tensors, pytorch_tensors):
+        check_grad(tensor, pytorch_tensor, atol=atol_grad)
     
 def get_same_pytorch_model(model):
     layers = []
@@ -53,7 +84,6 @@ def get_same_pytorch_model(model):
         elif isinstance(l, (nnn.Conv1d, nnn.Conv2d)):
             in_channel, out_channel = l.in_channel, l.out_channel
             stride, padding = l.stride, l.padding[0]
-            print(padding)
             kernel_size = l.kernel_size
             weight, bias = torch.Tensor(l.weight.data), torch.Tensor(l.bias.data)
             torch_layer = (nn.Conv1d(in_channel, out_channel, kernel_size, stride=stride, padding=padding) if isinstance(l, nnn.Conv1d) 
@@ -62,13 +92,13 @@ def get_same_pytorch_model(model):
             layers.append(torch_layer)
         
         elif isinstance(l, (nnn.MaxPool1d, nnn.AvgPool1d)):
-            size, stride = l.kernel_size, l.stride
-            torch_layer = nn.MaxPool1d(size, stride) if isinstance(l, nnn.MaxPool1d) else nn.AvgPool1d(size, stride)
+            size = l.pool_size
+            torch_layer = nn.MaxPool1d(size) if isinstance(l, nnn.MaxPool1d) else nn.AvgPool1d(size)
             layers.append(torch_layer)
 
         elif isinstance(l, (nnn.MaxPool2d, nnn.AvgPool2d)):
-            size, stride = l.kernel_size, l.stride
-            torch_layer = nn.MaxPool2d(size, stride) if isinstance(l, nnn.MaxPool2d) else nn.AvgPool2d(size, stride)
+            size = l.pool_size
+            torch_layer = nn.MaxPool2d(size) if isinstance(l, nnn.MaxPool2d) else nn.AvgPool2d(size)
             layers.append(torch_layer)
         
         elif isinstance(l, nnn.Flatten):
@@ -95,31 +125,55 @@ def get_same_pytorch_optimizer(optimizer, torch_model):
     if isinstance(optimizer, optim.SGD):
         lr, mom = float(optimizer.lr), float(optimizer.momentum)
         return torch.optim.SGD(torch_model.parameters(), lr, mom)
-
     elif isinstance(optimizer, optim.Adam):
         lr, beta1 = float(optimizer.lr), float(optimizer.beta1)
         beta2, eps = float(optimizer.beta2), float(optimizer.eps)
         return torch.optim.Adam(torch_model.parameters(), lr, (beta1, beta2), eps)
-    
     elif isinstance(optimizer, optim.AdamW):
         lr, reg = float(optimizer.lr), float(optimizer.reg)
         beta1, beta2 = float(optimizer.beta1), float(optimizer.beta2)
         eps = float(optimizer.eps)
         return torch.optim.AdamW(torch_model.parameters(), lr, (beta1, beta2), eps, reg)
-    
     else:
         raise NotImplementedError('Not supported Nanograd optimizer')
 
-def check_model_parameters(ng_model, pytorch_model, atol=1e-5):
+def get_same_pytorch_criterion(criterion):
+    if isinstance(criterion, nnn.NLLLoss):
+        return nn.NLLLoss()
+    elif isinstance(criterion, nnn.MSELoss):
+        return nn.MSELoss()
+    else:
+        raise NotImplementedError("Not supported Nanograd criterion")
+
+def make_test_module(shape_inp, shape_target, model, atol=1e-5, atol_grad=1e-5, rtol=1e-3, rtol_grad=1e-3, device=Device.CPU):
+    np.random.seed(0)
+    torch.manual_seed(0)
+
+    inp = Tensor.normal(0, 2, shape_inp, requires_grad=True, device=device)
+    target = Tensor.normal(0, 1, shape_target, requires_grad=True, device=device)
+    inp_torch, targ_torch = create_identical_torch_tensor(inp, target)
+
+    model_torch = get_same_pytorch_model(model)
+    
+    ret = model(inp)
+    ret_torch = model_torch(inp_torch)
+
+    ret.backward()
+    ret_torch.sum().backward()
+
+    check_val_and_grad(ret, ret_torch, atol=atol, atol_grad=atol_grad, rtol=rtol, rtol_grad=rtol_grad)
+    check_model_parameters(model, model_torch, atol=atol, atol_grad=atol_grad, rtol=rtol, rtol_grad=rtol_grad)
+
+def check_model_parameters(ng_model, pytorch_model, atol=1e-5, atol_grad=1e-4, rtol=1e-7, rtol_grad=1e-5):
     pytorch_layers = [module for module in pytorch_model.modules() if type(module) != nn.Sequential]
     for ng_l, pt_l in zip(ng_model.layers, pytorch_layers):
         if isinstance(ng_l, nnn.Linear):
-            np.testing.assert_allclose(ng_l.weight.data, pt_l.weight.detach().numpy(), atol=atol)
-            np.testing.assert_allclose(ng_l.bias.data, pt_l.bias.detach().numpy(), atol=atol)
+            np.testing.assert_allclose(ng_l.weight.data, pt_l.weight.detach().numpy(), atol=atol, rtol=rtol)
+            np.testing.assert_allclose(ng_l.bias.data, pt_l.bias.detach().numpy(), atol=atol, rtol=rtol)
 
             if ng_l.weight.grad:
-                np.testing.assert_allclose(ng_l.weight.grad.data, pt_l.weight.grad.detach().numpy(), atol=atol)
-                np.testing.assert_allclose(ng_l.bias.grad.data, pt_l.bias.grad.detach().numpy(), atol=atol)
+                np.testing.assert_allclose(ng_l.weight.grad.data, pt_l.weight.grad.detach().numpy(), atol=atol_grad, rtol=rtol_grad)
+                np.testing.assert_allclose(ng_l.bias.grad.data, pt_l.bias.grad.detach().numpy(), atol=atol_grad, rtol=rtol_grad)
         
         elif isinstance(ng_l, (nnn.BatchNorm1d, nnn.BatchNorm2d)):
             np.testing.assert_allclose(ng_l.weight.data, pt_l.weight.detach().numpy(), atol=atol)
@@ -128,13 +182,45 @@ def check_model_parameters(ng_model, pytorch_model, atol=1e-5):
             np.testing.assert_allclose(ng_l.running_var.data, pt_l.running_var.detach().numpy(), atol=atol)
 
             if ng_l.weight.grad and ng_l.bias.grad:
-                np.testing.assert_allclose(ng_l.weight.grad.data, pt_l.weight.grad.detach().numpy(), atol=atol)
-                np.testing.assert_allclose(ng_l.bias.grad.data, pt_l.bias.grad.detach().numpy(), atol=atol)
+                np.testing.assert_allclose(ng_l.weight.grad.data, pt_l.weight.grad.detach().numpy(), atol=atol_grad, rtol=rtol_grad)
+                np.testing.assert_allclose(ng_l.bias.grad.data, pt_l.bias.grad.detach().numpy(), atol=atol_grad, rtol=rtol_grad)
         
         elif isinstance(ng_l, (nnn.Conv1d, nnn.Conv2d)):
             np.testing.assert_allclose(ng_l.weight.data, pt_l.weight.detach().numpy(), atol=atol)
             np.testing.assert_allclose(ng_l.bias.data, pt_l.bias.detach().numpy(), atol=atol)
 
             if ng_l.weight.grad and ng_l.bias.grad:
-                np.testing.assert_allclose(ng_l.weight.grad.data, pt_l.weight.grad.detach().numpy(), atol=atol)
-                np.testing.assert_allclose(ng_l.bias.grad.data, pt_l.bias.grad.detach().numpy(), atol=atol)
+                np.testing.assert_allclose(ng_l.weight.grad.data, pt_l.weight.grad.detach().numpy(), atol=atol_grad, rtol=rtol_grad)
+                np.testing.assert_allclose(ng_l.bias.grad.data, pt_l.bias.grad.detach().numpy(), atol=atol_grad, rtol=rtol_grad)
+
+def make_test_step(shape_inp, shape_target, model, model_torch, optimizer, criterion, 
+                   atol=1e-5, atol_grad=1e-5, rtol=1e-7, rtol_grad=1e-7, device=Device.CPU):
+    np.random.seed(0)
+    torch.manual_seed(0)
+    def step_model(inp, target, model, criterion, optimizer):
+        out = model(inp)
+        loss = criterion(out, target)
+        loss.backward()
+        optimizer.step()
+        return model, loss, out
+    def step_pytorch_model(inp, target, model, criterion, optimizer):
+        x, out = model(inp)
+        loss = criterion(out, target.squeeze(-1).long())
+        loss.backward()
+        optimizer.step()
+        return model, loss, out
+
+    inp = Tensor.normal(0, 2, shape_inp, requires_grad=True, device=device)
+    target = Tensor.normal(0, 1, shape_target, requires_grad=True, device=device)
+    inp_torch, targ_torch = create_identical_torch_tensor(inp, target)
+
+    criterion_torch = get_same_pytorch_criterion(criterion)
+    optimizer = optimizer(model.parameters(), lr=1e-3)
+    optimizer_torch = get_same_pytorch_optimizer(optimizer, model_torch)
+
+    model, loss, out = step_model(inp, target, model, criterion, optimizer)
+    model_torch, loss_torch, out_torch = step_pytorch_model(inp_torch, targ_torch, model_torch, criterion_torch, optimizer_torch)
+
+    check_val(out, out_torch, atol=atol, rtol=rtol)
+    check_val(loss, loss_torch, atol=atol, rtol=rtol)
+    check_model_parameters(model, model_torch, atol=atol, atol_grad=atol_grad)

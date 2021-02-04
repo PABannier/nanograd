@@ -56,13 +56,13 @@ def transpose_forward(a):
 def reshape_forward(a, shape):
     return a.reshape(shape)
 
-def max_forward(a, axis, keepdims):
+def max_forward(a, axis):
     out = np.amax(a, axis=None if axis is None else tuple(axis), keepdims=True) 
     if axis is not None:
         out = out.reshape([a.shape[i] for i in range(len(a.shape)) if i not in axis])
     return out
 
-def min_forward(a, axis, keepdims):
+def min_forward(a, axis):
     out = np.amin(a, axis=None if axis is None else tuple(axis), keepdims=True)
     if axis is not None:
         out = out.reshape([a.shape[i] for i in range(len(a.shape)) if i not in axis])
@@ -104,48 +104,51 @@ def tanh_forward(a):
     return np.tanh(a)
 
 def conv1d_forward(a, weight, stride):
-    N, C, L = a.shape
-    F, _, KL = weight.shape
-    OL = get_conv1d_output_size(L, KL, stride, 0)
+    batch_size, in_channel, signal_length = a.shape
+    num_filters, _, kernel_length = weight.shape
+    output_length = get_conv1d_output_size(signal_length, kernel_length, stride, 0)
 
-    stride_shape = (L, 1, C * L, stride)
+    stride_shape = (signal_length, 1, in_channel * signal_length, stride)
     strides = a.data.itemsize * np.array(stride_shape)
+
     x_strides = np.lib.stride_tricks.as_strided(
         x=a,
         strides=strides,
-        shape=(C, KL, N, OL),
+        shape=(in_channel, kernel_length, batch_size, output_length),
         writeable=False
     )
 
     x_cols = np.ascontiguousarray(x_strides)
-    x_cols.shape = (C * KL, N * OL)
+    x_cols.shape = (in_channel * kernel_length, batch_size * output_length)
 
-    out = weight.reshape(F, -1) @ x_cols
-    out.shape = (F, N, OL)
+    out = weight.reshape(num_filters, -1) @ x_cols
+    out.shape = (num_filters, batch_size, output_length)
     return out.transpose(1, 0, 2), x_strides.transpose(2, 0, 3, 1)
 
+
 def conv2d_forward(a, weight, stride):
-    N, C, H, W = a.shape
-    F, _, HH, WW = weight.shape
-    OH, OW = get_conv2d_output_size(H, W, (HH, WW), stride, 0)
+    batch_size, in_channel, im_height, im_width = a.shape
+    num_filters, _, kernel_height, kernel_width = weight.shape
+    output_height, output_width = get_conv2d_output_size(im_height, im_width, (kernel_height, kernel_width), stride, 0)
 
-    out = np.zeros((N, F, OH, OW))
+    out = np.zeros((batch_size, num_filters, output_height, output_width))
 
-    strides = (H * W, W, 1, C * H * W, stride * W, stride)
+    strides = (im_height * im_width, im_width, 1, in_channel * im_height * im_height, stride * im_width, stride)
     strides = a.itemsize * np.array(strides)
+
     x_stride = np.lib.stride_tricks.as_strided(
         x=a,
-        shape=(C, HH, WW, N, OH, OW),
+        shape=(in_channel, kernel_height, kernel_width, batch_size, output_height, output_width),
         strides=strides,
         writeable=False
     )
 
     x_cols = np.ascontiguousarray(x_stride)
-    x_cols.shape = (C * HH * WW, N * OH * OW)
+    x_cols.shape = (in_channel * kernel_height * kernel_width, batch_size * output_height * output_width) 
 
-    res = weight.data.reshape(F, -1) @ x_cols
-    res.shape = (F, N, OH, OW)
-    return res.transpose(1, 0, 2, 3), x_stride.transpose(3, 0, 4, 5, 1, 2)
+    ret = weight.data.reshape(num_filters, -1) @ x_cols
+    ret.shape = (num_filters, batch_size, output_height, output_width)
+    return ret.transpose(1, 0, 2, 3), x_stride.transpose(3, 0, 4, 5, 1, 2)
 
 # *************************************
 # ********** Backward passes **********

@@ -11,7 +11,6 @@ nanograd.egg-info/requires.txt
 nanograd.egg-info/top_level.txt
 nanograd/nn/__init__.py
 nanograd/nn/conv_ops.py
-nanograd/nn/functional.py
 nanograd/nn/module.py
 nanograd/nn/ops_cpu.py
 nanograd/nn/ops_gpu.py

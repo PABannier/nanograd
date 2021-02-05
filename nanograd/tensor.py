@@ -362,6 +362,11 @@ class Tensor:
     def squeeze(self, axis):
         return Squeeze.apply(self, axis, cl_ctx=cl_ctx, cl_queue=cl_queue)
 
+    def flatten(self):
+        dim1, dim2 = self.shape[0], np.prod(self.shape[1:])
+        out = self.reshape((dim1, dim2))
+        return out
+
     # ****************************************
     # ******** Activation functions **********
     # ****************************************

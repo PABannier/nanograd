@@ -84,6 +84,8 @@ class TestOps(unittest.TestCase):
         make_test_ops([(1, )], lambda x: x.squeeze(axis=0), device=self.device)
     def test_unsqueeze(self):
         make_test_ops([(30, )], lambda x: x.unsqueeze(1), device=self.device)
+    def test_one_hot(self):
+        make_test_ops([(10, )], lambda x: x.one_hot(10), lambda x: F.one_hot(x.long(), 10), test_backward=False, discrete=True, device=self.device)
 
     def test_relu(self):
         make_test_ops([(20, 20)], lambda x: x.relu(), device=self.device)

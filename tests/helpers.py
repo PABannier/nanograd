@@ -30,7 +30,8 @@ def create_identical_torch_tensor(*args):
         torch_tensors.append(t)
     return tuple(torch_tensors) if len(torch_tensors) > 1 else torch_tensors[0]
 
-def make_test_ops(shapes, fcn_nanograd, fcn_torch=None, test_backward:bool=True, atol:float=1e-6, atol_grad:float=1e-6, device=Device.CPU):
+def make_test_ops(shapes, fcn_nanograd, fcn_torch=None,test_backward:bool=True, discrete=False, 
+                  atol:float=1e-6, atol_grad:float=1e-6, device=Device.CPU):
     np.random.seed(0)
     torch.manual_seed(0)
 
@@ -39,8 +40,12 @@ def make_test_ops(shapes, fcn_nanograd, fcn_torch=None, test_backward:bool=True,
     tensors = []
     pytorch_tensors = []
     for shape in shapes:
-        t = Tensor.normal(30, 1, shape, requires_grad=test_backward)
-        pt = torch.tensor(t.data, requires_grad=test_backward, dtype=torch.float32)
+        if discrete:
+            t = Tensor.randint(0, 10, shape)
+            pt = torch.tensor(t.data, dtype=torch.int32)
+        else:
+            t = Tensor.normal(30, 1, shape, requires_grad=test_backward)
+            pt = torch.tensor(t.data, requires_grad=test_backward, dtype=torch.float32)
 
         if device == Device.GPU: 
             t.gpu()
@@ -193,26 +198,39 @@ def check_model_parameters(ng_model, pytorch_model, atol=1e-5, atol_grad=1e-4, r
                 np.testing.assert_allclose(ng_l.weight.grad.data, pt_l.weight.grad.detach().numpy(), atol=atol_grad, rtol=rtol_grad)
                 np.testing.assert_allclose(ng_l.bias.grad.data, pt_l.bias.grad.detach().numpy(), atol=atol_grad, rtol=rtol_grad)
 
-def make_test_step(shape_inp, shape_target, model, model_torch, optimizer, criterion, 
+def make_test_step(shape_inp, shape_target, model, optimizer, criterion, classification=True,
                    atol=1e-5, atol_grad=1e-5, rtol=1e-7, rtol_grad=1e-7, device=Device.CPU):
     np.random.seed(0)
     torch.manual_seed(0)
     def step_model(inp, target, model, criterion, optimizer):
         out = model(inp)
+        if classification: 
+            out = out.log_softmax()
         loss = criterion(out, target)
-        loss.backward()
+        out.backward()
         optimizer.step()
         return model, loss, out
     def step_pytorch_model(inp, target, model, criterion, optimizer):
-        x, out = model(inp)
-        loss = criterion(out, target.squeeze(-1).long())
-        loss.backward()
+        out = model(inp)
+        if classification:
+            out = torch.nn.functional.log_softmax(out, dim=1)
+            loss = criterion(out, target.squeeze(-1).long())
+        else:
+            loss = criterion(out, target)
+        out.sum().backward()
         optimizer.step()
         return model, loss, out
 
     inp = Tensor.normal(0, 2, shape_inp, requires_grad=True, device=device)
-    target = Tensor.normal(0, 1, shape_target, requires_grad=True, device=device)
+
+    if classification:
+        target = Tensor.randint(0, 9, shape_target, device=device)
+    else:
+        target = Tensor.normal(0, 1, shape_target, device=device)
+
     inp_torch, targ_torch = create_identical_torch_tensor(inp, target)
+
+    model_torch = get_same_pytorch_model(model)
 
     criterion_torch = get_same_pytorch_criterion(criterion)
     optimizer = optimizer(model.parameters(), lr=1e-3)
@@ -223,4 +241,4 @@ def make_test_step(shape_inp, shape_target, model, model_torch, optimizer, crite
 
     check_val(out, out_torch, atol=atol, rtol=rtol)
     check_val(loss, loss_torch, atol=atol, rtol=rtol)
-    check_model_parameters(model, model_torch, atol=atol, atol_grad=atol_grad)
+    check_model_parameters(model, model_torch, atol=atol, atol_grad=atol_grad, rtol=rtol, rtol_grad=rtol_grad)

@@ -599,8 +599,7 @@ class Flatten(Module):
             Returns:
                 out (Tensor): (batch_size, dim_2 * dim_3 * ...) batch_size, then all other dims flattened
         """
-        dim1, dim2 = x.shape[0], np.prod(x.shape[1:])
-        out = x.reshape((dim1, dim2))
+        out = x.flatten()
         out.name = 'flatten_res'
         return out
 
@@ -662,8 +661,10 @@ class NLLLoss(Module):
         Returns:
             Tensor: loss, stored as a float in a Tensor object 
         """
-        return - (log_probs * target).mean()
-    
+        batch_size, num_classes = log_probs.shape
+        labels = target.one_hot(num_classes)
+        return -(log_probs * labels).mean()
+        
 
 class MSELoss(Module):
     """The MSELoss function.

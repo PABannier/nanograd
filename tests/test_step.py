@@ -17,111 +17,49 @@ class TestStep(unittest.TestCase):
     def __init__(self, *args, **kwargs):
         super(TestStep, self).__init__(*args, **kwargs)
         self.device = Device.CPU
-        self.optimizers = [optim.SGD] # optim.Adam, optim.AdamW
-        self.criteria = [nnn.NLLLoss()]
+        self.optimizers = [optim.SGD, optim.Adam, optim.AdamW]
     
-    def test_linear_step(self):
+    def test_linear_step_classification(self):
         for optimizer in self.optimizers:
-            for criterion in self.criteria:
-                with self.subTest(optimizer=optimizer, criterion=criterion):
-                    make_test_step((32, 30), (32, 1), SimpleLinearModel(), SimpleTorchLinearModel(), optimizer, criterion)
+                with self.subTest(optimizer=optimizer):
+                    simple_model = nnn.Sequential(nnn.Linear(30, 128), nnn.ReLU(), nnn.Linear(128, 10), nnn.ReLU())
+                    make_test_step((32, 30), (32, 1), simple_model, optimizer, nnn.NLLLoss(), atol_grad=1e-4, rtol_grad=1e-5)
     
-    """
-    def test_conv1d_step(self):
+    def test_conv1d_step_classification(self):
         for optimizer in self.optimizers:
-            for criterion in self.criteria:
-                with self.subTest(optimizer=optimizer, criterion=criterion):
-                    model, model_torch = CNN1dModel(), CNN1dTorchModel()
-                    make_test_step((32, 3, 100), (32, 1), model, model_torch, optimizer, criterion)
-    
-    def test_conv2d_step(self):
+            with self.subTest(optimizer=optimizer):
+                model = nnn.Sequential(nnn.Conv1d(3, 10, 3, 2), nnn.ReLU(), nnn.MaxPool1d(2), 
+                                       nnn.Conv1d(10, 20, 3, 2), nnn.ReLU(), nnn.MaxPool1d(3),
+                                       nnn.Flatten(), nnn.Linear(60, 10))
+                make_test_step((32, 3, 100), (32, 1), model, optimizer, nnn.NLLLoss(), atol_grad=1e-4, rtol_grad=1e-5)
+
+    def test_conv2d_step_classification(self):
         for optimizer in self.optimizers:
-            for criterion in self.criteria:
-                with self.subTest(optimizer=optimizer, criterion=criterion):
-                    model, model_torch = CNN2dModel(), CNN2dTorchModel()
-                    make_test_step((32, 3, 60, 60), (32, 1), model, model_torch, optimizer, criterion)
-    """
+            with self.subTest(optimizer=optimizer):
+                model = nnn.Sequential(nnn.Conv2d(3, 10, 3, 2), nnn.ReLU(), nnn.MaxPool2d(3), 
+                                       nnn.Conv2d(10, 20, 3, 2), nnn.ReLU(), nnn.MaxPool2d(2), 
+                                       nnn.Flatten(), nnn.Linear(80, 10))
+                make_test_step((32, 3, 60, 60), (32, 1), model, optimizer, nnn.NLLLoss(), atol=1e-4, rtol=1e-4, atol_grad=5e-4, rtol_grad=1e-4)
 
+    def test_linear_step_regression(self):
+        for optimizer in self.optimizers:
+                with self.subTest(optimizer=optimizer):
+                    simple_model = nnn.Sequential(nnn.Linear(30, 128), nnn.ReLU(), nnn.Linear(128, 1), nnn.ReLU())
+                    make_test_step((32, 30), (32, 1), simple_model, optimizer, nnn.MSELoss(), classification=False, atol_grad=1e-4, rtol_grad=1e-5)
     
-class SimpleLinearModel(nnn.Module):
-    def __init__(self):
-        super().__init__()
-        self.l1, self.l2 = nnn.Linear(30, 128), nnn.Linear(128, 10)
-        self.a1, self.a2 = nnn.ReLU(), nnn.ReLU()
-    
-    def forward(self, x):
-        x = self.a1(self.l1(x))
-        x = self.a2(self.l2(x))
-        return x, x.log_softmax()
+    def test_conv1d_step_regression(self):
+        for optimizer in self.optimizers:
+            with self.subTest(optimizer=optimizer):
+                model = nnn.Sequential(nnn.Conv1d(3, 10, 3, 2), nnn.ReLU(), nnn.MaxPool1d(2), 
+                                       nnn.Conv1d(10, 20, 3, 2), nnn.ReLU(), nnn.MaxPool1d(3),
+                                       nnn.Flatten(), nnn.Linear(60, 1))
+                make_test_step((32, 3, 100), (32, 1), model, optimizer, nnn.MSELoss(), classification=False, atol_grad=1e-4, rtol_grad=1e-5)
 
-
-class SimpleTorchLinearModel(nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.l1, self.l2 = nn.Linear(30, 128), nn.Linear(128, 10)
-        self.a1, self.a2 = nn.ReLU(), nn.ReLU()
-    
-    def forward(self, x):
-        x = self.a1(self.l1(x))
-        x = self.a2(self.l2(x))
-        return x, F.log_softmax(x, dim=1)
-
-
-class CNN1dModel(nnn.Module):
-    def __init__(self):
-        super().__init__()
-        self.c1, self.bn1 = nnn.Conv1d(3, 10, 3, 2), nnn.BatchNorm1d(10)
-        self.c2, self.bn2 = nnn.Conv1d(10, 20, 3, 2), nnn.BatchNorm1d(20)
-        self.l1 = nnn.Linear(1600, 10)
-    
-    def forward(self, x):
-        x = self.bn1(self.c1(x).relu())
-        x = self.bn2(self.c2(x).relu())
-        x = nnn.Flatten()(x)
-        x = self.l1(x)
-        return x.log_softmax()
-
-
-class CNN1dTorchModel(nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.c1, self.bn1 = nn.Conv1d(3, 10, 3, 2), nn.BatchNorm1d(10)
-        self.c2, self.bn2 = nn.Conv1d(10, 20, 3, 2), nn.BatchNorm1d(20)
-        self.l1 = nn.Linear(1600, 10)
-
-    def forward(self, x):
-        x = self.bn1(self.c1(x).relu())
-        x = self.bn2(self.c2(x).relu())
-        x = nn.Flatten()(x)
-        x = self.l1(x)
-        return F.log_softmax(x, dim=1)
-
-
-class CNN2dModel(nnn.Module):
-    def __init__(self):
-        super().__init__()
-        self.c1, self.bn1 = nnn.Conv2d(3, 10, 3, 2), nnn.BatchNorm2d(10)
-        self.c2, self.bn2 = nnn.Conv2d(10, 20, 3, 2), nnn.BatchNorm2d(20)
-        self.l1 = nnn.Linear(3920, 10)
-    
-    def forward(self, x):
-        x = self.bn1(self.c1(x).relu())
-        x = self.bn2(self.c2(x).relu())
-        x = nnn.Flatten()(x)
-        x = self.l1(x)
-        return x.log_softmax()
-
-
-class CNN2dTorchModel(nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.c1, self.bn1 = nn.Conv2d(3, 10, 3, 2), nn.BatchNorm2d(10)
-        self.c2, self.bn2 = nn.Conv2d(10, 20, 3, 2), nn.BatchNorm2d(20)
-        self.l1 = nn.Linear(3920, 10)
-
-    def forward(self, x):
-        x = self.bn1(self.c1(x).relu())
-        x = self.bn2(self.c2(x).relu())
-        x = nn.Flatten()(x)
-        x = self.l1(x)
-        return F.log_softmax(x, dim=1)
+    def test_conv2d_step_regression(self):
+        for optimizer in self.optimizers:
+            with self.subTest(optimizer=optimizer):
+                model = nnn.Sequential(nnn.Conv2d(3, 10, 3, 2), nnn.ReLU(), nnn.MaxPool2d(3), 
+                                       nnn.Conv2d(10, 20, 3, 2), nnn.ReLU(), nnn.MaxPool2d(2), 
+                                       nnn.Flatten(), nnn.Linear(80, 1))
+                make_test_step((32, 3, 60, 60), (32, 1), model, optimizer, nnn.MSELoss(), classification=False, 
+                                atol=1e-4, rtol=1e-4, atol_grad=5e-4, rtol_grad=1e-4)

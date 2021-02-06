@@ -67,10 +67,12 @@ class Module:
     def train(self) -> None:
         """Activates training mode for network component"""
         self.is_train = True
+        return self
 
     def eval(self) -> None:
         """Activates evaluation mode for network component"""
         self.is_train = False
+        return self
     
     def forward(self, *args):
         """Forward pass of the module"""
@@ -689,6 +691,8 @@ class MSELoss(Module):
         Returns:
             Tensor: loss, stored as a float in a tensor
         """
+        print(predicted)
+        print(target)
         return ((predicted - target) ** 2).mean()
 
 

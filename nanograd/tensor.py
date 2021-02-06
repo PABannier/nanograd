@@ -1184,7 +1184,7 @@ class Conv2d(Function):
         is_leaf = not requires_grad
 
         if x.device == Device.CPU:
-            out, x_reshaped = ops_cpu.conv2d_forward(x.data, weight, stride)
+            out, x_reshaped = ops_cpu.conv2d_forward(x.data, weight.data, stride)
             ctx.x_reshaped = x_reshaped
         else:
             out = ops_gpu.conv2d_forward(ctx.cl_ctx, ctx.cl_queue, x.data, weight.data, stride)
@@ -1208,7 +1208,7 @@ class Conv2d(Function):
             grad_x, grad_weight = ops_cpu.conv2d_backward(grad_output.data, x, x_reshaped, weight.data, stride)
         else:
             grad_x, grad_weight = ops_gpu.conv2d_backward(ctx.cl_ctx, ctx.cl_queue, grad_output.data, 
-                                                                     x.data, weight.data, stride)
+                                                          x.data, weight.data, stride)
 
         grad_x = Tensor(grad_x, device=grad_output.device)
         grad_weight = Tensor(grad_weight, device=grad_output.device)

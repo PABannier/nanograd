@@ -111,19 +111,19 @@ def conv1d_forward(a, weight, stride):
     stride_shape = (signal_length, 1, in_channel * signal_length, stride)
     strides = a.data.itemsize * np.array(stride_shape)
 
-    x_strides = np.lib.stride_tricks.as_strided(
+    cols = np.lib.stride_tricks.as_strided(
         x=a,
         strides=strides,
         shape=(in_channel, kernel_length, batch_size, output_length),
         writeable=False
     )
 
-    x_cols = np.ascontiguousarray(x_strides)
-    x_cols.shape = (in_channel * kernel_length, batch_size * output_length)
+    cols = cols.transpose(2, 0, 1, 3)
+    weight = weight.transpose(1, 2, 0) 
 
-    out = weight.reshape(num_filters, -1) @ x_cols
-    out.shape = (num_filters, batch_size, output_length)
-    return out.transpose(1, 0, 2), x_strides.transpose(2, 0, 3, 1)
+    ret = np.tensordot(cols, weight, axes=[(1, 2), (0, 1)])
+    ret = ret.transpose(0, 2, 1)
+    return ret, cols.transpose(0, 1, 3, 2) 
 
 
 def conv2d_forward(a, weight, stride):
@@ -131,24 +131,23 @@ def conv2d_forward(a, weight, stride):
     num_filters, _, kernel_height, kernel_width = weight.shape
     output_height, output_width = get_conv2d_output_size(im_height, im_width, (kernel_height, kernel_width), stride, 0)
 
-    out = np.zeros((batch_size, num_filters, output_height, output_width))
-
     strides = (im_height * im_width, im_width, 1, in_channel * im_height * im_height, stride * im_width, stride)
     strides = a.itemsize * np.array(strides)
 
-    x_stride = np.lib.stride_tricks.as_strided(
+    cols = np.lib.stride_tricks.as_strided(
         x=a,
         shape=(in_channel, kernel_height, kernel_width, batch_size, output_height, output_width),
         strides=strides,
         writeable=False
     )
 
-    x_cols = np.ascontiguousarray(x_stride)
-    x_cols.shape = (in_channel * kernel_height * kernel_width, batch_size * output_height * output_width) 
+    cols = cols.transpose(3, 0, 1, 2, 4, 5)
+    weight = weight.transpose(1, 2, 3, 0)
 
-    ret = weight.data.reshape(num_filters, -1) @ x_cols
-    ret.shape = (num_filters, batch_size, output_height, output_width)
-    return ret.transpose(1, 0, 2, 3), x_stride.transpose(3, 0, 4, 5, 1, 2)
+    #jiyxYX,iyxk -> jYXk -> jkYX
+    ret = np.tensordot(cols, weight, axes=[(1, 2, 3), (0, 1, 2)])
+    ret = ret.transpose(0, 3, 1, 2)
+    return ret, cols.transpose(0, 1, 4, 5, 2, 3) 
 
 # *************************************
 # ********** Backward passes **********
@@ -228,7 +227,8 @@ def conv1d_backward(grad_output, x, x_reshaped, weight, stride):
     num_filters, _, kernel_length = weight.shape
     _, _, output_length = grad_output.shape
 
-    grad_weight = np.einsum('ikX, ijXx -> kjx', grad_output, x_reshaped)
+    #grad_weight = np.einsum('ikX, ijXx -> kjx', grad_output, x_reshaped) SLOWER than using tensordot
+    grad_weight = np.tensordot(grad_output, x_reshaped, axes=[(0, 2), (0, 2)])
 
     grad_x = np.zeros((batch_size, in_channel, signal_length), dtype=grad_output.dtype)
 
@@ -236,7 +236,8 @@ def conv1d_backward(grad_output, x, x_reshaped, weight, stride):
         X = k % output_length
         iX = X * stride
 
-        grad_x[:, :, iX:iX+kernel_length] += np.einsum('ik, kjy->ijy', grad_output[:, :, X], weight)
+        #grad_x[:, :, iX:iX+kernel_length] += np.einsum('ik, kjy->ijy', grad_output[:, :, X], weight) SLOWER than using tensordot
+        grad_x[:, :, iX:iX+kernel_length] += np.tensordot(grad_output[:, :, X], weight, axes=[(1), (0)])
     
     grad_x = grad_x.reshape((batch_size, in_channel, signal_length))
 
@@ -247,15 +248,18 @@ def conv2d_backward(grad_output, x, x_reshaped, weight, stride):
     num_filters, _, kernel_height, kernel_width = weight.shape
     _, _, output_height, output_width = grad_output.shape
     
-    #ALTERNATIVE: grad_weight = np.einsum('ikYX, ijYXyx -> kjyx', grad_output, x_reshaped)
-    grad_weight = np.tensordot(grad_output, x_reshaped, ((0,2,3),(0,2,3)))
+    #grad_weight = np.einsum('ikYX, ijYXyx -> kjyx', grad_output, x_reshaped) SLOWER than using tensordot 
+    grad_weight = np.tensordot(grad_output, x_reshaped, axes=[(0,2,3),(0,2,3)])
 
     grad_x = np.zeros((batch_size, in_channel, im_height, im_width), dtype=grad_output.dtype)
 
     for k in range(output_height * output_width):
         X, Y = k % output_width, k // output_width
         iX, iY = X * stride, Y * stride
-        grad_x[:,:, iY:iY+kernel_height, iX:iX+kernel_width] += np.einsum('ik,kjyx->ijyx', grad_output[:,:,Y,X], weight)
+
+        # grad_x[:,:, iY:iY+kernel_height, iX:iX+kernel_width] += np.einsum('ik,kjyx->ijyx', grad_output[:,:,Y,X], weight) 
+        # SLOWER than using tensordot
+        grad_x[:,:, iY:iY+kernel_height, iX:iX+kernel_width] += np.tensordot(grad_output[:,:,Y,X], weight, axes=[(1), (0)])
 
     grad_x = grad_x.reshape((batch_size, in_channel, im_height, im_width))
 

@@ -1,65 +1,87 @@
 from nanograd.tensor import Tensor
 from nanograd.device import Device
+
 import nanograd.nn.module as nnn
 import nanograd.optim.optimizer as optim
 
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
-import numpy as np
-
-import unittest
+import torch.optim
 
 from tests.helpers import make_test_step
+import numpy as np
+import unittest
+
+torch.set_printoptions(precision=8)
+
+
+x_init = np.random.randn(1, 3).astype(np.float32)
+W_init = np.random.randn(3, 3).astype(np.float32)
+m_init = np.random.randn(1, 3).astype(np.float32)
+
+
+def step_nanograd(optim, kwargs={}):
+    net = TinyNet().train()
+    optim = optim([net.x, net.W], **kwargs)
+    out = net.forward()
+    out.backward()
+    optim.step()
+
+    return net.x.cpu().data, net.W.cpu().data
+
+def step_pytorch(optim, kwargs={}):
+    net = TorchNet()
+    optim = optim([net.x, net.W], **kwargs)
+    out = net.forward()
+    out.backward()
+    optim.step()
+
+    return net.x.detach().numpy(), net.W.detach().numpy()
+
+
+class TinyNet(nnn.Module):
+    def __init__(self):
+        super().__init__()
+        self.x = Tensor(x_init.copy(), requires_grad=True)
+        self.W = Tensor(W_init.copy(), requires_grad=True)
+        self.m = Tensor(m_init.copy())
+
+    def forward(self):
+        out = (self.x @ self.W).relu()
+        out = out.log_softmax()
+        out = out.__mul__(self.m).__add__(self.m).sum()
+        return out
+
+
+class TorchNet():
+    def __init__(self):
+        self.x = torch.tensor(x_init.copy(), requires_grad=True)
+        self.W = torch.tensor(W_init.copy(), requires_grad=True)
+        self.m = torch.tensor(m_init.copy())
+
+    def forward(self):
+        out = (self.x @ self.W).relu()
+        out = F.log_softmax(out, 1)
+        out = out.__mul__(self.m).__add__(self.m).sum()
+        return out
 
 
 class TestStep(unittest.TestCase):
-    def __init__(self, *args, **kwargs):
-        super(TestStep, self).__init__(*args, **kwargs)
-        self.device = Device.CPU
-        self.optimizers = [optim.SGD, optim.Adam, optim.AdamW]
+    def test_sgd(self):
+        for mom in [0, 0.9]:
+            with self.subTest(mom=mom):
+                kwargs = {'lr': 0.001, 'momentum': mom}
+                for x, y in zip(step_nanograd(optim.SGD, kwargs), step_pytorch(torch.optim.SGD, kwargs)):
+                    np.testing.assert_allclose(x, y, atol=1e-5)
     
-    def test_linear_step_classification(self):
-        for optimizer in self.optimizers:
-                with self.subTest(optimizer=optimizer):
-                    simple_model = nnn.Sequential(nnn.Linear(30, 128), nnn.ReLU(), nnn.Linear(128, 10), nnn.ReLU())
-                    make_test_step((32, 30), (32, 1), simple_model, optimizer, nnn.NLLLoss(), atol_grad=1e-4, rtol_grad=1e-5)
+    def test_adam(self):
+        for x, y in zip(step_nanograd(optim.Adam), step_pytorch(torch.optim.Adam)):
+            np.testing.assert_allclose(x, y, atol=1e-5)
+
+    def test_adamw(self):
+        for wd in [1e-1, 1e-2, 1e-3]:
+            with self.subTest(wd=wd):
+                kwargs = {'lr': 1e-3, 'weight_decay': wd}
+                for x, y in zip(step_nanograd(optim.AdamW, kwargs), step_pytorch(torch.optim.AdamW, kwargs)):
+                    np.testing.assert_allclose(x, y, atol=1e-5)
     
-    def test_conv1d_step_classification(self):
-        for optimizer in self.optimizers:
-            with self.subTest(optimizer=optimizer):
-                model = nnn.Sequential(nnn.Conv1d(3, 10, 3, 2), nnn.ReLU(), nnn.MaxPool1d(2), 
-                                       nnn.Conv1d(10, 20, 3, 2), nnn.ReLU(), nnn.MaxPool1d(3),
-                                       nnn.Flatten(), nnn.Linear(60, 10))
-                make_test_step((32, 3, 100), (32, 1), model, optimizer, nnn.NLLLoss(), atol_grad=1e-4, rtol_grad=1e-5)
-
-    def test_conv2d_step_classification(self):
-        for optimizer in self.optimizers:
-            with self.subTest(optimizer=optimizer):
-                model = nnn.Sequential(nnn.Conv2d(3, 10, 3, 2), nnn.ReLU(), nnn.MaxPool2d(3), 
-                                       nnn.Conv2d(10, 20, 3, 2), nnn.ReLU(), nnn.MaxPool2d(2), 
-                                       nnn.Flatten(), nnn.Linear(80, 10))
-                make_test_step((32, 3, 60, 60), (32, 1), model, optimizer, nnn.NLLLoss(), atol=1e-4, rtol=1e-4, atol_grad=5e-4, rtol_grad=1e-4)
-
-    def test_linear_step_regression(self):
-        for optimizer in self.optimizers:
-                with self.subTest(optimizer=optimizer):
-                    simple_model = nnn.Sequential(nnn.Linear(30, 128), nnn.ReLU(), nnn.Linear(128, 1), nnn.ReLU())
-                    make_test_step((32, 30), (32, 1), simple_model, optimizer, nnn.MSELoss(), classification=False, atol_grad=1e-4, rtol_grad=1e-5)
-    
-    def test_conv1d_step_regression(self):
-        for optimizer in self.optimizers:
-            with self.subTest(optimizer=optimizer):
-                model = nnn.Sequential(nnn.Conv1d(3, 10, 3, 2), nnn.ReLU(), nnn.MaxPool1d(2), 
-                                       nnn.Conv1d(10, 20, 3, 2), nnn.ReLU(), nnn.MaxPool1d(3),
-                                       nnn.Flatten(), nnn.Linear(60, 1))
-                make_test_step((32, 3, 100), (32, 1), model, optimizer, nnn.MSELoss(), classification=False, atol_grad=1e-4, rtol_grad=1e-5)
-
-    def test_conv2d_step_regression(self):
-        for optimizer in self.optimizers:
-            with self.subTest(optimizer=optimizer):
-                model = nnn.Sequential(nnn.Conv2d(3, 10, 3, 2), nnn.ReLU(), nnn.MaxPool2d(3), 
-                                       nnn.Conv2d(10, 20, 3, 2), nnn.ReLU(), nnn.MaxPool2d(2), 
-                                       nnn.Flatten(), nnn.Linear(80, 1))
-                make_test_step((32, 3, 60, 60), (32, 1), model, optimizer, nnn.MSELoss(), classification=False, 
-                                atol=1e-4, rtol=1e-4, atol_grad=5e-4, rtol_grad=1e-4)

@@ -10,11 +10,17 @@ import nanograd.optim.optimizer as optim
 import torch.nn as nn
 import torch.optim
 
+from tqdm import trange
 
-def check_val(nano_tensor, torch_tensor, atol=1e-5, rtol=1e-3):
+
+#######################
+## TENSOR COMPARISON ##
+#######################
+
+def check_val(nano_tensor, torch_tensor, atol=1e-6, rtol=1e-3):
     np.testing.assert_allclose(nano_tensor.data, torch_tensor.data.numpy(), atol=atol, rtol=rtol)
 
-def check_grad(nano_tensor, torch_tensor, atol=1e-5, rtol=1e-3):
+def check_grad(nano_tensor, torch_tensor, atol=1e-6, rtol=1e-3):
     if nano_tensor.grad is not None and torch_tensor.grad is not None:
         np.testing.assert_allclose(nano_tensor.grad.data, torch_tensor.grad.numpy(), atol=atol, rtol=rtol)
 
@@ -30,8 +36,13 @@ def create_identical_torch_tensor(*args):
         torch_tensors.append(t)
     return tuple(torch_tensors) if len(torch_tensors) > 1 else torch_tensors[0]
 
+
+#######################
+####### TEST OPS ######
+#######################
+
 def make_test_ops(shapes, fcn_nanograd, fcn_torch=None,test_backward:bool=True, discrete=False, 
-                  atol:float=1e-6, atol_grad:float=1e-6, device=Device.CPU):
+                  atol:float=1e-6, rtol:float=1e-3, atol_grad:float=1e-6, rtol_grad:float=1e-3, device=Device.CPU):
     np.random.seed(0)
     torch.manual_seed(0)
 
@@ -60,11 +71,16 @@ def make_test_ops(shapes, fcn_nanograd, fcn_torch=None,test_backward:bool=True, 
        out.backward()
        out_torch.sum().backward()
     
-    check_val(out, out_torch, atol=atol)
+    check_val(out, out_torch, atol=atol, rtol=rtol)
 
     for tensor, pytorch_tensor in zip(tensors, pytorch_tensors):
-        check_grad(tensor, pytorch_tensor, atol=atol_grad)
+        check_grad(tensor, pytorch_tensor, atol=atol_grad, rtol=rtol_grad)
     
+
+#######################
+##### TEST MODULE #####
+#######################
+
 def get_same_pytorch_model(model):
     layers = []
     
@@ -198,6 +214,12 @@ def check_model_parameters(ng_model, pytorch_model, atol=1e-5, atol_grad=1e-4, r
                 np.testing.assert_allclose(ng_l.weight.grad.data, pt_l.weight.grad.detach().numpy(), atol=atol_grad, rtol=rtol_grad)
                 np.testing.assert_allclose(ng_l.bias.grad.data, pt_l.bias.grad.detach().numpy(), atol=atol_grad, rtol=rtol_grad)
 
+
+#######################
+###### TEST STEP ######
+#######################
+
+
 def make_test_step(shape_inp, shape_target, model, optimizer, criterion, classification=True,
                    atol=1e-5, atol_grad=1e-5, rtol=1e-7, rtol_grad=1e-7, device=Device.CPU):
     np.random.seed(0)
@@ -242,3 +264,53 @@ def make_test_step(shape_inp, shape_target, model, optimizer, criterion, classif
     check_val(out, out_torch, atol=atol, rtol=rtol)
     check_val(loss, loss_torch, atol=atol, rtol=rtol)
     check_model_parameters(model, model_torch, atol=atol, atol_grad=atol_grad, rtol=rtol, rtol_grad=rtol_grad)
+
+
+#######################
+###### TEST MNIST #####
+#######################
+
+def train(model, X, y, optimizer, steps=1000, batch_size=128, criterion=nnn.NLLLoss):
+    model.train()
+    losses, accuracies = [], []
+
+    t = trange(steps, desc="Steps")
+    for step in t:
+        sample = np.random.randint(0, X.shape[0], size=(batch_size))
+
+        Xb = Tensor(X[sample])
+        Yb = Tensor(y[sample])
+
+        out = model(Xb)
+
+        optimizer.zero_grad()
+
+        loss = criterion()(out, Yb)
+        loss.backward()
+
+        optimizer.step()
+
+        cat = np.argmax(out.cpu().data, axis=-1)
+        accuracy = (cat == Yb).mean()
+
+        loss = loss.cpu().data
+        losses.append(loss)
+        accuracies.append(accuracy)
+
+        t.set_description("loss %.2f accuracy %.2f" % (loss, accuracy))
+
+def evaluate(model, X, y, batch_size=128, num_classes=10):
+    model.eval()
+    Y_pred = np.zeros((y.shape[0], num_classes))
+
+    t = trange((len(y) - 1) // batch_size + 1)
+    for i in t:
+        Xb = Tensor(X[batch_size * i : batch_size * (i+1), :])
+        Y_pred[batch_size * i : batch_size * (i+1), :] = model(Xb).cpu().data
+    
+    Y_pred = Y_pred.argmax(-1)
+    
+    acc = (y == Y_pred).mean()
+    print('test set accuracy is %f' % acc)
+    return acc
+    

@@ -70,6 +70,10 @@ def make_test_ops(shapes, fcn_nanograd, fcn_torch=None,test_backward:bool=True, 
     if test_backward:
        out.backward()
        out_torch.sum().backward()
+
+    if device == Device.GPU:
+        out.cpu()
+        tensors = [t.cpu() for t in tensors]
     
     check_val(out, out_torch, atol=atol, rtol=rtol)
 

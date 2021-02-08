@@ -84,15 +84,28 @@ class Adam(Optimizer):
         self.t += 1
 
         for param, m1, m2 in zip(self.params, self.moments1, self.moments2):
+            # Good
             g = param.grad.data
-            m1.data = self.beta1 * m1.data + (1 - self.beta1) * g
-            m2.data = self.beta2 * m2.data + (1 - self.beta2) * (g ** 2)
 
-            bias_correction1 = m1.data / (1 - (self.beta1 ** self.t))
-            bias_correction2 = m2.data / (1 - (self.beta2 ** self.t))
+            m1 = self.beta1 * m1.data + (1 - self.beta1) * g  # Initial errors, here,
+            m2 = self.beta2 * m2.data + (1 - self.beta2) * (g ** 2) # Initial errors here, need to correct it here => everything start here
 
-            #param.data -= self.lr * m1_hat / (m2_hat.sqrt() + self.eps)
+            bias_correction1 = m1 / (1 - (self.beta1 ** self.t))
+            bias_correction2 = m2 / (1 - (self.beta2 ** self.t))
+
             param.data -= self.lr * bias_correction1 / (np.sqrt(bias_correction2) + self.eps)
+            """
+            g = param.grad
+            m1 = self.beta1 * m1 + (1 - self.beta1) * g
+            m2 = self.beta2 * m2 + (1 - self.beta2) * (g ** 2)
+
+            bias_correction1 = m1 / (1 - (self.beta1 ** self.t))
+            bias_correction2 = m2 / (1 - (self.beta2 ** self.t))
+            
+            param -= self.lr * bias_correction1 / (bias_correction2.sqrt() + self.eps)
+            """
+            
+        
 
     def reset(self) -> None:
         self._init_parameters()

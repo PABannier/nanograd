@@ -442,17 +442,17 @@ def reshape_forward(ctx, queue, a, shape):
     shape = tuple(-np.prod(a.shape) // np.prod(shape) if s == -1 else s for s in shape)
     return GPUBuffer(ctx, shape, hostbuf=a.data)
 
-def max_forward(ctx, queue, a, axis, keepdims):
+def max_forward(ctx, queue, a, axis):
     return reduce_op(ctx, queue, 'out = max(a, out)', 'out',
-                     a, axis=axis, keepdims=keepdims, start='-INFINITY')
+                     a, axis=axis, keepdims=False, start='-INFINITY')
 
-def min_forward(ctx, queue, a, axis, keepdims):
+def min_forward(ctx, queue, a, axis):
     return reduce_op(ctx, queue, 'out = min(a, out)', 'out',
-                     a, axis=axis, keepdims=keepdims, start='+INFINITY')
+                     a, axis=axis, keepdims=False, start='+INFINITY')
 
-def sum_forward(ctx, queue, a, axis, keepdims):
+def sum_forward(ctx, queue, a, axis):
     return reduce_op(ctx, queue, 'out += a', 'out', 
-                     a, axis=axis, keepdims=keepdims)
+                     a, axis=axis, keepdims=False)
 
 def conv1d_forward(ctx, queue, a, weight, stride):
     batch_size, in_channel, length = a.shape

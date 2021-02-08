@@ -68,10 +68,10 @@ def min_forward(a, axis):
         out = out.reshape([a.shape[i] for i in range(len(a.shape)) if i not in axis])
     return out
 
-def sum_forward(a, axis, keepdims):
+def sum_forward(a, axis):
     if axis is None:
-        return np.array(a.sum(keepdims=keepdims))
-    return a.sum(axis=axis, keepdims=keepdims)
+        return np.array(a.sum())
+    return a.sum(axis=axis)
 
 def add_forward(a, b):
     return a + b

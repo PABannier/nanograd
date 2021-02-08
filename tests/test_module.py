@@ -14,7 +14,7 @@ import numpy as np
 from tests.helpers import make_test_module
 
 
-class TestModule(unittest.TestCase):
+class TestModuleCPU(unittest.TestCase):
     """TestModule encompasses several integration tests to check if the forward 
        and backward passes are correctly carried out. In particular we check the value
        of the output of a model, and the gradients of all the weights and biases of that model.
@@ -26,7 +26,7 @@ class TestModule(unittest.TestCase):
                AvgPool2d, BacthNorm1d, BatchNorm2d.
     """
     def __init__(self, *args, **kwargs):
-        super(TestModule, self).__init__(*args, **kwargs)
+        super(TestModuleCPU, self).__init__(*args, **kwargs)
         self.device = Device.CPU
     
     def test_linear(self):
@@ -99,5 +99,3 @@ class TestModule(unittest.TestCase):
                                            nnn.Conv2d(num_channels_1, num_channels_2, 3, 3), nnn.BatchNorm2d(num_channels_2), 
                                            nnn.ReLU(), nnn.Flatten())
                     make_test_module((8, 3, 30, 30), (8, 1), model, device=self.device, atol_grad=1e-4, rtol_grad=1e-5)
-    
-    

@@ -320,8 +320,8 @@ class Tensor:
     # ******** Advanced operations ***********
     # ****************************************
     
-    def sum(self, axis=None, keepdims:bool=False):
-        return Sum.apply(self, axis, keepdims, cl_ctx=cl_ctx, cl_queue=cl_queue)
+    def sum(self, axis=None):
+        return Sum.apply(self, axis, cl_ctx=cl_ctx, cl_queue=cl_queue)
     
     def mean(self, axis=None, keepdims:bool=False):
         out = self.sum(axis=axis)
@@ -884,7 +884,7 @@ class Add(Function):
 
 class Sum(Function):
     @staticmethod
-    def forward(ctx, a, axis, keepdims):
+    def forward(ctx, a, axis):
         ctx.axis = axis
         ctx.save_for_backward(a)
 
@@ -892,9 +892,9 @@ class Sum(Function):
         is_leaf = not requires_grad
 
         if a.device == Device.CPU:
-            out_data = ops_cpu.sum_forward(a.data, axis, keepdims)
+            out_data = ops_cpu.sum_forward(a.data, axis)
         else:
-            out_data = ops_gpu.sum_forward(ctx.cl_ctx, ctx.cl_queue, a.data, axis, keepdims)
+            out_data = ops_gpu.sum_forward(ctx.cl_ctx, ctx.cl_queue, a.data, axis)
 
         out = Tensor(out_data, requires_grad=requires_grad, 
                             is_leaf=is_leaf, device=a.device)

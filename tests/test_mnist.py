@@ -2,6 +2,7 @@ from tests.helpers import train, evaluate
 
 import nanograd.nn.module as nn
 import nanograd.optim.optimizer as optim
+from nanograd.device import Device
 
 import numpy as np
 
@@ -74,38 +75,41 @@ class CNNModel2d(nn.Module):
         super().__init__()
         self.conv1 = nn.Conv2d(1, 8, 3)
         self.conv2 = nn.Conv2d(8, 16, 3)
-        self.bn1 = nn.BatchNorm2d(8)
         self.l1 = nn.Linear(400, 10)
     
     def forward(self, x):
         x = x.reshape(shape=(-1, 1, 28, 28))
-        x = self.bn1(self.conv1(x)).relu().max_pool2d()
+        x = self.conv1(x).relu().max_pool2d()
         x = self.conv2(x).relu().max_pool2d()
         x = x.flatten()
         return self.l1(x).log_softmax()
 
 
-class MNISTTest(unittest.TestCase):
+class MNISTTestCPU(unittest.TestCase):
     def __init__(self, *args, **kwargs):
-        super(MNISTTest, self).__init__(*args, **kwargs)
+        super(MNISTTestCPU, self).__init__(*args, **kwargs)
+        self.device = Device.CPU
 
-    
     def test_linear(self):
         model = LinearModel()
         optimizer = optim.Adam(model.parameters(), lr=1e-3)
         train(model, X_train, Y_train, optimizer, steps=1000)
         assert evaluate(model, X_test, Y_test) > 0.95
-    """
+
     def test_conv1d(self):
         model = CNNModel1d()
         optimizer = optim.Adam(model.parameters(), lr=1e-3)
         train(model, X_train, Y_train, optimizer, steps=150)
         assert evaluate(model, X_test, Y_test) > 0.92
-    """
-    """
+
     def test_conv2d(self):
         model = CNNModel2d()
         optimizer = optim.Adam(model.parameters(), lr=1e-3)
         train(model, X_train, Y_train, optimizer, steps=200)
-        assert evaluate(model, X_test, Y_test) > 0.92
-    """
+        assert evaluate(model, X_test, Y_test) > 0.91
+
+
+#class MNISTTestGPU(MNISTTestCPU):
+#    def __init__(self, *args, **kwargs):
+#        super(MNISTTestGPU, self).__init__(*args, **kwargs)
+#        self.device = Device.GPU

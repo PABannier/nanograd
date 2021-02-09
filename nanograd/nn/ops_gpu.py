@@ -412,7 +412,8 @@ def matmul_forward(ctx, queue, a, b):
     return matmul_op(ctx, queue, a, b)
 
 def log_forward(ctx, queue, a):
-    return unary_op(ctx, queue, 'log(a)', a)
+    out = unary_op(ctx, queue, 'log(a)', a)
+    return out
 
 def exp_forward(ctx, queue, a):
     return unary_op(ctx, queue, 'exp(a)', a)

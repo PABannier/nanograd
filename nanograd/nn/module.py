@@ -367,8 +367,8 @@ class BatchNorm2d(Module):
             Returns:
                 Tensor: Normalized tensor
         """
-        x_hat = (x - mean.reshape(shape=[1, -1, 1, 1])) / (var + self.eps).sqrt().reshape(shape=[1, -1, 1, 1])
-        out = self.weight.reshape(shape=[1, -1, 1, 1]) * x_hat + self.bias.reshape(shape=[1, -1, 1, 1])
+        x_hat = (x - mean.reshape(shape=[1, -1, 1, 1])) * self.weight.reshape(shape=[1, -1, 1, 1])
+        out = x_hat / ((var + self.eps).reshape(shape=[1, -1, 1, 1]).sqrt()) + self.bias.reshape(shape=[1, -1, 1, 1])
         out.name = 'bn_2d_res'
         return out
 

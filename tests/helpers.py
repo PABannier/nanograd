@@ -174,17 +174,25 @@ def make_test_module(shape_inp, shape_target, model, atol=1e-5, atol_grad=1e-5, 
     np.random.seed(0)
     torch.manual_seed(0)
 
-    inp = Tensor.normal(0, 2, shape_inp, requires_grad=True, device=device)
-    target = Tensor.normal(0, 1, shape_target, requires_grad=True, device=device)
+    inp = Tensor.normal(0, 2, shape_inp, requires_grad=True)
+    target = Tensor.normal(0, 1, shape_target, requires_grad=True)
     inp_torch, targ_torch = create_identical_torch_tensor(inp, target)
 
     model_torch = get_same_pytorch_model(model)
+
+    if device == Device.GPU:
+        inp.gpu()
+        model.gpu()
     
     ret = model(inp)
     ret_torch = model_torch(inp_torch)
 
     ret.backward()
     ret_torch.sum().backward()
+
+    if device == Device.GPU:
+        ret.cpu()
+        model.cpu()
 
     check_val_and_grad(ret, ret_torch, atol=atol, atol_grad=atol_grad, rtol=rtol, rtol_grad=rtol_grad)
     check_model_parameters(model, model_torch, atol=atol, atol_grad=atol_grad, rtol=rtol, rtol_grad=rtol_grad)
@@ -220,63 +228,14 @@ def check_model_parameters(ng_model, pytorch_model, atol=1e-5, atol_grad=1e-4, r
 
 
 #######################
-###### TEST STEP ######
-#######################
-
-
-def make_test_step(shape_inp, shape_target, model, optimizer, criterion, classification=True,
-                   atol=1e-5, atol_grad=1e-5, rtol=1e-7, rtol_grad=1e-7, device=Device.CPU):
-    np.random.seed(0)
-    torch.manual_seed(0)
-    def step_model(inp, target, model, criterion, optimizer):
-        out = model(inp)
-        if classification: 
-            out = out.log_softmax()
-        loss = criterion(out, target)
-        out.backward()
-        optimizer.step()
-        return model, loss, out
-    def step_pytorch_model(inp, target, model, criterion, optimizer):
-        out = model(inp)
-        if classification:
-            out = torch.nn.functional.log_softmax(out, dim=1)
-            loss = criterion(out, target.squeeze(-1).long())
-        else:
-            loss = criterion(out, target)
-        out.sum().backward()
-        optimizer.step()
-        return model, loss, out
-
-    inp = Tensor.normal(0, 2, shape_inp, requires_grad=True, device=device)
-
-    if classification:
-        target = Tensor.randint(0, 9, shape_target, device=device)
-    else:
-        target = Tensor.normal(0, 1, shape_target, device=device)
-
-    inp_torch, targ_torch = create_identical_torch_tensor(inp, target)
-
-    model_torch = get_same_pytorch_model(model)
-
-    criterion_torch = get_same_pytorch_criterion(criterion)
-    optimizer = optimizer(model.parameters(), lr=1e-3)
-    optimizer_torch = get_same_pytorch_optimizer(optimizer, model_torch)
-
-    model, loss, out = step_model(inp, target, model, criterion, optimizer)
-    model_torch, loss_torch, out_torch = step_pytorch_model(inp_torch, targ_torch, model_torch, criterion_torch, optimizer_torch)
-
-    check_val(out, out_torch, atol=atol, rtol=rtol)
-    check_val(loss, loss_torch, atol=atol, rtol=rtol)
-    check_model_parameters(model, model_torch, atol=atol, atol_grad=atol_grad, rtol=rtol, rtol_grad=rtol_grad)
-
-
-#######################
 ###### TEST MNIST #####
 #######################
 
-def train(model, X, y, optimizer, steps=1000, batch_size=128, criterion=nnn.NLLLoss):
+def train(model, X, y, optimizer, steps=1000, batch_size=128, criterion=nnn.NLLLoss, device=Device.CPU):
     model.train()
     losses, accuracies = [], []
+
+    if device == Device.GPU: model.gpu()
 
     t = trange(steps, desc="Steps")
     for step in t:
@@ -284,6 +243,9 @@ def train(model, X, y, optimizer, steps=1000, batch_size=128, criterion=nnn.NLLL
 
         Xb = Tensor(X[sample])
         Yb = Tensor(y[sample])
+
+        if device == Device.GPU:
+            Xb.gpu(), Yb.gpu()
 
         out = model(Xb)
 
@@ -295,7 +257,7 @@ def train(model, X, y, optimizer, steps=1000, batch_size=128, criterion=nnn.NLLL
         optimizer.step()
 
         cat = np.argmax(out.cpu().data, axis=-1)
-        accuracy = (cat == Yb).mean()
+        accuracy = (cat == Yb.cpu().data).mean()
 
         loss = loss.cpu().data
         losses.append(loss)
@@ -303,13 +265,16 @@ def train(model, X, y, optimizer, steps=1000, batch_size=128, criterion=nnn.NLLL
 
         t.set_description("loss %.2f accuracy %.2f" % (loss, accuracy))
 
-def evaluate(model, X, y, batch_size=128, num_classes=10):
+def evaluate(model, X, y, batch_size=128, num_classes=10, device=Device.CPU):
     model.eval()
     Y_pred = np.zeros((y.shape[0], num_classes))
+
+    if device == Device.GPU: model.gpu()
 
     t = trange((len(y) - 1) // batch_size + 1)
     for i in t:
         Xb = Tensor(X[batch_size * i : batch_size * (i+1), :])
+        if device == Device.GPU: Xb.gpu()
         Y_pred[batch_size * i : batch_size * (i+1), :] = model(Xb).cpu().data
     
     Y_pred = Y_pred.argmax(-1)

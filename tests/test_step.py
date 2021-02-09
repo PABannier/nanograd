@@ -8,11 +8,8 @@ import torch
 import torch.nn.functional as F
 import torch.optim
 
-from tests.helpers import make_test_step
 import numpy as np
 import unittest
-
-torch.set_printoptions(precision=8)
 
 
 x_init = np.random.randn(1, 3).astype(np.float32)
@@ -20,8 +17,9 @@ W_init = np.random.randn(3, 3).astype(np.float32)
 m_init = np.random.randn(1, 3).astype(np.float32)
 
 
-def step_nanograd(optim, kwargs={}):
+def step_nanograd(optim, device, kwargs={}):        
     net = TinyNet().train()
+    if device == Device.GPU: net.gpu()
     optim = optim([net.x, net.W], **kwargs)
     out = net.forward()
     out.backward()
@@ -66,22 +64,32 @@ class TorchNet():
         return out
 
 
-class TestStep(unittest.TestCase):
+class TestStepCPU(unittest.TestCase):
+    def __init__(self, *args, **kwargs):
+        super(TestStepCPU, self).__init__(*args, **kwargs)
+        self.device = Device.CPU
+
     def test_sgd(self):
         for mom in [0, 0.9]:
             with self.subTest(mom=mom):
                 kwargs = {'lr': 0.001, 'momentum': mom}
-                for x, y in zip(step_nanograd(optim.SGD, kwargs), step_pytorch(torch.optim.SGD, kwargs)):
+                for x, y in zip(step_nanograd(optim.SGD, self.device, kwargs), step_pytorch(torch.optim.SGD, kwargs)):
                     np.testing.assert_allclose(x, y, atol=1e-5)
     
     def test_adam(self):
-        for x, y in zip(step_nanograd(optim.Adam), step_pytorch(torch.optim.Adam)):
+        for x, y in zip(step_nanograd(optim.Adam, self.device), step_pytorch(torch.optim.Adam)):
             np.testing.assert_allclose(x, y, atol=1e-5)
 
     def test_adamw(self):
         for wd in [1e-1, 1e-2, 1e-3]:
             with self.subTest(wd=wd):
                 kwargs = {'lr': 1e-3, 'weight_decay': wd}
-                for x, y in zip(step_nanograd(optim.AdamW, kwargs), step_pytorch(torch.optim.AdamW, kwargs)):
+                for x, y in zip(step_nanograd(optim.AdamW, self.device, kwargs), step_pytorch(torch.optim.AdamW, kwargs)):
                     np.testing.assert_allclose(x, y, atol=1e-5)
+    
+
+class TestStepGPU(TestStepCPU):
+    def __init__(self, *args, **kwargs):
+        super(TestStepGPU, self).__init__(*args, **kwargs)
+        self.device = Device.GPU
     

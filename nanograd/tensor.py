@@ -241,7 +241,8 @@ class Tensor:
     def __str__(self):
         return f"<NanoTensor({str(self.data)}, " + \
                f"grad_fn={self.grad_fn.__class__.__name__  if self.grad_fn else None}), " + \
-               f"name={self.name}>"
+               f"name={self.name}," + \
+               f"device={self.device}>"
     
     def __repr__(self):
         return self.__str__()
@@ -261,12 +262,12 @@ class Tensor:
 
             if start is None:
                 start = 0
-            elif type(start) != int:
+            elif not np.issubdtype(type(start), int):
                 raise TypeError(f"Indices must be integer. Got {type(start)}")
             
             if stop is None:
                 stop = self.shape[i]
-            elif type(stop) != int:
+            elif not np.issubdtype(type(stop), int):
                 raise TypeError(f"Indices must be integer. Got {type(stop)}")
             elif stop < 0:
                 stop = self.shape[i] + stop
@@ -383,7 +384,7 @@ class Tensor:
     def log_softmax(self):
         batch_size, num_classes = self.shape
         a = self.max(axis=1).reshape((batch_size, 1)) # Log-exp trick
-        out = self - a - (self - a).exp().sum(axis=1).log().reshape((batch_size, 1))
+        out = self - a - (self - a).exp().sum(axis=1).unsqueeze(0).log().reshape((batch_size, 1))
         return out
 
     # ****************************************
@@ -794,14 +795,14 @@ class Log(Function):
     def forward(ctx, a):
         ctx.save_for_backward(a)
         requires_grad = a.requires_grad
-
+    
         if a.device == Device.CPU:
             out_data = ops_cpu.log_forward(a.data)
         else:
             out_data = ops_gpu.log_forward(ctx.cl_ctx, ctx.cl_queue, a.data)
 
         out = Tensor(out_data, requires_grad=requires_grad, 
-                            is_leaf=not requires_grad, device=a.device)
+                     is_leaf=not requires_grad, device=a.device)
         out.children = [a]   
         out.op = 'log'                
         return out
@@ -897,7 +898,7 @@ class Sum(Function):
             out_data = ops_gpu.sum_forward(ctx.cl_ctx, ctx.cl_queue, a.data, axis)
 
         out = Tensor(out_data, requires_grad=requires_grad, 
-                            is_leaf=is_leaf, device=a.device)
+                     is_leaf=is_leaf, device=a.device)
         out.children = [a]
         out.op = 'sum'
         return out

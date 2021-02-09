@@ -92,10 +92,17 @@ class TestModuleCPU(unittest.TestCase):
                 make_test_module((8, 3, 80, 80), (8, 1), model, device=self.device, atol_grad=1e-4, rtol_grad=1e-5)
     
     def test_batchnorm2d(self):
-        for num_channels_1 in [8, 16, 32, 64]:
-            for num_channels_2 in [8, 16, 32, 64]:
-                with self.subTest(num_channels_1=num_channels_1, num_channels_2=num_channels_2):
-                    model = nnn.Sequential(nnn.Conv2d(3, num_channels_1, 2, 2), nnn.BatchNorm2d(num_channels_1), nnn.ReLU(),
-                                           nnn.Conv2d(num_channels_1, num_channels_2, 3, 3), nnn.BatchNorm2d(num_channels_2), 
-                                           nnn.ReLU(), nnn.Flatten())
-                    make_test_module((8, 3, 30, 30), (8, 1), model, device=self.device, atol_grad=1e-4, rtol_grad=1e-5)
+        for num_channels_1 in [8, 16]:  
+            for num_channels_2 in [16, 32]: 
+                if num_channels_1 < num_channels_2:
+                    with self.subTest(num_channels_1=num_channels_1, num_channels_2=num_channels_2):
+                        model = nnn.Sequential(nnn.Conv2d(3, num_channels_1, 2, 2), nnn.BatchNorm2d(num_channels_1), nnn.ReLU(),
+                                            nnn.Conv2d(num_channels_1, num_channels_2, 3, 3), nnn.BatchNorm2d(num_channels_2), 
+                                            nnn.ReLU(), nnn.Flatten())
+                        make_test_module((8, 3, 30, 30), (8, 1), model, device=self.device, atol_grad=5e-4, rtol_grad=1e-5)
+
+
+class TestModuleGPU(TestModuleCPU):
+    def __init__(self, *args, **kwargs):
+        super(TestModuleGPU, self).__init__(*args, **kwargs)
+        self.device = Device.GPU

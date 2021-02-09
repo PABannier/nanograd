@@ -139,7 +139,3 @@ class TestGPU(TestOps):
     def __init__(self, *args, **kwargs):
         super(TestGPU, self).__init__(*args, **kwargs)
         self.device = Device.GPU
-
-
-if __name__ == '__main__':
-    unittest.main(verbosity=2)

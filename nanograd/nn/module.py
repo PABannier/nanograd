@@ -128,18 +128,34 @@ class Module:
     def _ensure_is_initialized(self):
         """Ensures that subclass's __init__() method ran super().__init__()"""
         if self.__dict__.get('_submodules') is None:
-            raise Exception("Module not intialized. "
-                            "Did you forget to call super().__init__()?")
+            raise Exception("Modules not initialized. Did not initialize the parent class. \
+                             Call super().__init__().")
+        if self.__dict__.get('_tensors') is None:
+            raise Exception("Tensors not initialized. Did not initialize the parent class. \
+                             Call super().__init__().")
+        if self.__dict__.get('_parameters') is None: 
+            raise Exception("Parameters not initialized. Did not initialize the parent class. \
+                             Call super().__init__().")
     
     def cpu(self):
         """Moving all tensors onto the CPU"""
-        for tensor in self._tensors.items():
-            tensor[1].cpu()
+        if len(self._tensors) > 0:
+            for tensor in self._tensors.items():
+                tensor[1].cpu()
+        if len(self._submodules) > 0:
+            for module in self._submodules.items():
+                module[1].cpu()
+        return self
         
     def gpu(self):
         """Moving all tensors onto the GPU"""
-        for tensor in self._tensors.items():
-            tensor[1].gpu()
+        if len(self._tensors) > 0:
+            for tensor in self._tensors.items():
+                tensor[1].gpu()
+        if len(self._submodules) > 0:
+            for module in self._submodules.items():
+                module[1].gpu()
+        return self
 
 
 class Sequential(Module):
@@ -194,10 +210,12 @@ class Sequential(Module):
     def gpu(self):
         for layer in self.layers:
             layer.gpu()
+        return self
     
     def cpu(self):
         for layer in self.layers:
             layer.cpu()
+        return self
 
 class Linear(Module):
     """A linear layer (aka 'fully-connected' or 'dense' layer)
@@ -691,8 +709,6 @@ class MSELoss(Module):
         Returns:
             Tensor: loss, stored as a float in a tensor
         """
-        print(predicted)
-        print(target)
         return ((predicted - target) ** 2).mean()
 
 

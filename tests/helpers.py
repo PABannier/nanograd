@@ -235,17 +235,15 @@ def train(model, X, y, optimizer, steps=1000, batch_size=128, criterion=nnn.NLLL
     model.train()
     losses, accuracies = [], []
 
-    if device == Device.GPU: model.gpu()
+    if device == Device.GPU: 
+        model.gpu()
 
     t = trange(steps, desc="Steps")
     for step in t:
         sample = np.random.randint(0, X.shape[0], size=(batch_size))
 
-        Xb = Tensor(X[sample])
-        Yb = Tensor(y[sample])
-
-        if device == Device.GPU:
-            Xb.gpu(), Yb.gpu()
+        Xb = Tensor(X[sample], device=device)
+        Yb = Tensor(y[sample], device=device)
 
         out = model(Xb)
 

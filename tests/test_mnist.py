@@ -42,7 +42,7 @@ X_train, Y_train, X_test, Y_test = load_mnist()
 
 class LinearModel(nn.Module):
     def __init__(self):
-        super().__init__()
+        super(LinearModel, self).__init__()
         self.l1 = nn.Linear(784, 128)
         self.bn1 = nn.BatchNorm1d(128)
         self.l2 = nn.Linear(128, 10)
@@ -56,13 +56,13 @@ class LinearModel(nn.Module):
 
 class CNNModel1d(nn.Module):
     def __init__(self):
-        super().__init__()
+        super(CNNModel1d, self).__init__()
         self.conv1 = nn.Conv1d(1, 8, 3)
         self.conv2 = nn.Conv1d(8, 16, 3)
         self.l1 = nn.Linear(3104, 10)
     
     def forward(self, x):
-        x = x.reshape(shape=(-1, 1, 784))
+        x = x.reshape(shape=[-1, 1, 784])
         x = self.conv1(x).relu().max_pool1d()
         x = self.conv2(x).relu().max_pool1d()
         x = x.flatten()
@@ -72,13 +72,13 @@ class CNNModel1d(nn.Module):
 
 class CNNModel2d(nn.Module):
     def __init__(self):
-        super().__init__()
+        super(CNNModel2d, self).__init__()
         self.conv1 = nn.Conv2d(1, 8, 3)
         self.conv2 = nn.Conv2d(8, 16, 3)
         self.l1 = nn.Linear(400, 10)
     
     def forward(self, x):
-        x = x.reshape(shape=(-1, 1, 28, 28))
+        x = x.reshape(shape=[-1, 1, 28, 28])
         x = self.conv1(x).relu().max_pool2d()
         x = self.conv2(x).relu().max_pool2d()
         x = x.flatten()
@@ -93,23 +93,23 @@ class MNISTTestCPU(unittest.TestCase):
     def test_linear(self):
         model = LinearModel()
         optimizer = optim.Adam(model.parameters(), lr=1e-3)
-        train(model, X_train, Y_train, optimizer, steps=1000)
-        assert evaluate(model, X_test, Y_test) > 0.95
+        train(model, X_train, Y_train, optimizer, steps=1000, device=self.device)
+        assert evaluate(model, X_test, Y_test, device=self.device) > 0.95
 
     def test_conv1d(self):
         model = CNNModel1d()
         optimizer = optim.Adam(model.parameters(), lr=1e-3)
-        train(model, X_train, Y_train, optimizer, steps=150)
-        assert evaluate(model, X_test, Y_test) > 0.92
+        train(model, X_train, Y_train, optimizer, steps=150, device=self.device)
+        assert evaluate(model, X_test, Y_test, device=self.device) > 0.92
 
     def test_conv2d(self):
         model = CNNModel2d()
         optimizer = optim.Adam(model.parameters(), lr=1e-3)
-        train(model, X_train, Y_train, optimizer, steps=200)
-        assert evaluate(model, X_test, Y_test) > 0.91
+        train(model, X_train, Y_train, optimizer, steps=200, device=self.device)
+        assert evaluate(model, X_test, Y_test, device=self.device) > 0.91
 
 
-#class MNISTTestGPU(MNISTTestCPU):
-#    def __init__(self, *args, **kwargs):
-#        super(MNISTTestGPU, self).__init__(*args, **kwargs)
-#        self.device = Device.GPU
+class MNISTTestGPU(MNISTTestCPU):
+    def __init__(self, *args, **kwargs):
+        super(MNISTTestGPU, self).__init__(*args, **kwargs)
+        self.device = Device.GPU

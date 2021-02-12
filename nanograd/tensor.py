@@ -494,7 +494,7 @@ class Tensor:
         """
         return Conv1d.apply(self, weight, stride, cl_ctx=cl_ctx, cl_queue=cl_queue)
     
-    def conv2d(self, weight, stride):
+    def conv2d(self, weight, stride=1):
         """2d convolution
         
         Args:

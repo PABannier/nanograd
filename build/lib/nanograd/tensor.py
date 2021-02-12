@@ -241,7 +241,8 @@ class Tensor:
     def __str__(self):
         return f"<NanoTensor({str(self.data)}, " + \
                f"grad_fn={self.grad_fn.__class__.__name__  if self.grad_fn else None}), " + \
-               f"name={self.name}>"
+               f"name={self.name}," + \
+               f"device={self.device}>"
     
     def __repr__(self):
         return self.__str__()
@@ -261,12 +262,12 @@ class Tensor:
 
             if start is None:
                 start = 0
-            elif type(start) != int:
+            elif not np.issubdtype(type(start), int):
                 raise TypeError(f"Indices must be integer. Got {type(start)}")
             
             if stop is None:
                 stop = self.shape[i]
-            elif type(stop) != int:
+            elif not np.issubdtype(type(stop), int):
                 raise TypeError(f"Indices must be integer. Got {type(stop)}")
             elif stop < 0:
                 stop = self.shape[i] + stop
@@ -320,8 +321,8 @@ class Tensor:
     # ******** Advanced operations ***********
     # ****************************************
     
-    def sum(self, axis=None, keepdims:bool=False):
-        return Sum.apply(self, axis, keepdims, cl_ctx=cl_ctx, cl_queue=cl_queue)
+    def sum(self, axis=None):
+        return Sum.apply(self, axis, cl_ctx=cl_ctx, cl_queue=cl_queue)
     
     def mean(self, axis=None, keepdims:bool=False):
         out = self.sum(axis=axis)
@@ -334,11 +335,11 @@ class Tensor:
     def T(self):
         return Transpose.apply(self, cl_ctx=cl_ctx, cl_queue=cl_queue)
 
-    def max(self, axis=None, keepdims=False):
-        return Max.apply(self, axis, keepdims, cl_ctx=cl_ctx, cl_queue=cl_queue)
+    def max(self, axis=None):
+        return Max.apply(self, axis, cl_ctx=cl_ctx, cl_queue=cl_queue)
     
-    def min(self, axis=None, keepdims=False):
-        return Min.apply(self, axis, keepdims, cl_ctx=cl_ctx, cl_queue=cl_queue)
+    def min(self, axis=None):
+        return Min.apply(self, axis, cl_ctx=cl_ctx, cl_queue=cl_queue)
     
     def log(self):
         return Log.apply(self, cl_ctx=cl_ctx, cl_queue=cl_queue)
@@ -362,6 +363,11 @@ class Tensor:
     def squeeze(self, axis):
         return Squeeze.apply(self, axis, cl_ctx=cl_ctx, cl_queue=cl_queue)
 
+    def flatten(self):
+        dim1, dim2 = self.shape[0], np.prod(self.shape[1:])
+        out = self.reshape((dim1, dim2))
+        return out
+
     # ****************************************
     # ******** Activation functions **********
     # ****************************************
@@ -375,6 +381,12 @@ class Tensor:
     def tanh(self):
         return Tanh.apply(self, cl_ctx=cl_ctx, cl_queue=cl_queue)
     
+    def log_softmax(self):
+        batch_size, num_classes = self.shape
+        a = self.max(axis=1).reshape((batch_size, 1)) # Log-exp trick
+        out = self - a - (self - a).exp().sum(axis=1).unsqueeze(0).log().reshape((batch_size, 1))
+        return out
+
     # ****************************************
     # ********* Conv/Pool operations *********
     # ****************************************
@@ -412,44 +424,43 @@ class Tensor:
         """
         return self._pool1d(kernel_size).mean(axis=3)
         
-    def _pool2d(self, field_height:int, field_width:int):
+    def _pool2d(self, pool_size:tuple):
         """
             2-dimensional pooling operation
 
             Args:
-                field_height (int): height of the pooling kernel
-                field_width (int): width of the pooling kernel
+                pool_size (tuple): height of the pooling kernel
             
             Returns:
                 x_reshaped (Tensor): pooled Tensor
         """
         x_unpadded = self[:, :, 
-            :self.shape[2] - self.shape[2] % field_height, 
-            :self.shape[3] - self.shape[3] % field_width]
+            :self.shape[2] - self.shape[2] % pool_size[0], 
+            :self.shape[3] - self.shape[3] % pool_size[1]]
         
         shape = (x_unpadded.shape[0], x_unpadded.shape[1], 
-                 x_unpadded.shape[2] // field_height, field_height, 
-                 x_unpadded.shape[3] // field_width, field_width)
+                 x_unpadded.shape[2] // pool_size[0], pool_size[0], 
+                 x_unpadded.shape[3] // pool_size[1], pool_size[1])
 
         x_reshaped = x_unpadded.reshape(shape=shape)
 
         return x_reshaped
     
-    def max_pool2d(self, kernel_size:tuple=(2, 2)):
+    def max_pool2d(self, pool_size:tuple=(2, 2)):
         """MaxPooling2d operation
         
             Args:
                 kernel_size (tuple): Kernel length for pooling operation
         """
-        return self._pool2d(*kernel_size).max(axis=5).max(axis=3)
+        return self._pool2d(pool_size).max(axis=(3, 5))
     
-    def avg_pool2d(self, kernel_size:tuple=(2, 2)):
+    def avg_pool2d(self, pool_size:tuple=(2, 2)):
         """AvgPooling2d operation
         
             Args:
                 kernel_size (tuple): Kernel length for pooling operation
         """
-        return self._pool2d(*kernel_size).mean(axis=(3, 5))
+        return self._pool2d(pool_size).mean(axis=(3, 5))
 
     def pad1d(self, pad:tuple):
         """Padding for one-dimensional signal
@@ -520,27 +531,6 @@ class Tensor:
 # ****************************************
 # ************** Functional **************
 # ****************************************
-
-def cross_entropy(predicted:Tensor, target:Tensor) -> Tensor:
-    """Calculates Cross Entropy Loss between logits and true labels.
-       Used in the CrossEntropy module
-
-    Args:
-        predicted (Tensor): Logits
-        target (Tensor): Target classes
-
-    Returns:
-        Tensor: Loss in a Tensor of shape ()
-    """
-    batch_size, num_classes = predicted.shape
-    labels = target.one_hot(num_classes)
-
-    a = predicted.max(axis=1).reshape((batch_size, 1))
-    log_softmax = predicted - a - (predicted - a).exp().sum(axis=1).log().reshape((batch_size, 1))
-    nll_loss = - (log_softmax * labels).sum() / batch_size
-
-    return nll_loss
-
 
 class OneHot(Function):
     @staticmethod
@@ -726,7 +716,7 @@ class Reshape(Function):
 
 class Max(Function):
     @staticmethod
-    def forward(ctx, a, axis=None, keepdims=False):
+    def forward(ctx, a, axis=None):
         axis = [axis] if type(axis) == int else axis
 
         ctx.save_for_backward(a)
@@ -735,10 +725,9 @@ class Max(Function):
         is_leaf = not requires_grad
 
         if a.device == Device.CPU:
-            out_data = ops_cpu.max_forward(a.data, axis, keepdims)
+            out_data = ops_cpu.max_forward(a.data, axis)
         else:
-            out_data = ops_gpu.max_forward(ctx.cl_ctx, ctx.cl_queue, 
-                                           a.data, axis, keepdims)
+            out_data = ops_gpu.max_forward(ctx.cl_ctx, ctx.cl_queue, a.data, axis)
         
         ctx.axis, ctx.out = axis, out_data
 
@@ -765,7 +754,7 @@ class Max(Function):
 
 class Min(Function):
     @staticmethod
-    def forward(ctx, a, axis=None, keepdims=False):
+    def forward(ctx, a, axis=None):
         axis = [axis] if type(axis) == int else axis
 
         ctx.save_for_backward(a)
@@ -774,9 +763,9 @@ class Min(Function):
         is_leaf = not requires_grad
 
         if a.device == Device.CPU:
-            out_data = ops_cpu.min_forward(a.data, axis, keepdims)
+            out_data = ops_cpu.min_forward(a.data, axis)
         else:
-            out_data = ops_gpu.min_forward(ctx.cl_ctx, ctx.cl_queue, a.data, axis, keepdims)
+            out_data = ops_gpu.min_forward(ctx.cl_ctx, ctx.cl_queue, a.data, axis)
         
         ctx.axis, ctx.out = axis, out_data
 
@@ -806,14 +795,14 @@ class Log(Function):
     def forward(ctx, a):
         ctx.save_for_backward(a)
         requires_grad = a.requires_grad
-
+    
         if a.device == Device.CPU:
             out_data = ops_cpu.log_forward(a.data)
         else:
             out_data = ops_gpu.log_forward(ctx.cl_ctx, ctx.cl_queue, a.data)
 
         out = Tensor(out_data, requires_grad=requires_grad, 
-                            is_leaf=not requires_grad, device=a.device)
+                     is_leaf=not requires_grad, device=a.device)
         out.children = [a]   
         out.op = 'log'                
         return out
@@ -896,7 +885,7 @@ class Add(Function):
 
 class Sum(Function):
     @staticmethod
-    def forward(ctx, a, axis, keepdims):
+    def forward(ctx, a, axis):
         ctx.axis = axis
         ctx.save_for_backward(a)
 
@@ -904,12 +893,12 @@ class Sum(Function):
         is_leaf = not requires_grad
 
         if a.device == Device.CPU:
-            out_data = ops_cpu.sum_forward(a.data, axis, keepdims)
+            out_data = ops_cpu.sum_forward(a.data, axis)
         else:
-            out_data = ops_gpu.sum_forward(ctx.cl_ctx, ctx.cl_queue, a.data, axis, keepdims)
+            out_data = ops_gpu.sum_forward(ctx.cl_ctx, ctx.cl_queue, a.data, axis)
 
         out = Tensor(out_data, requires_grad=requires_grad, 
-                            is_leaf=is_leaf, device=a.device)
+                     is_leaf=is_leaf, device=a.device)
         out.children = [a]
         out.op = 'sum'
         return out
@@ -1196,7 +1185,7 @@ class Conv2d(Function):
         is_leaf = not requires_grad
 
         if x.device == Device.CPU:
-            out, x_reshaped = ops_cpu.conv2d_forward(x.data, weight, stride)
+            out, x_reshaped = ops_cpu.conv2d_forward(x.data, weight.data, stride)
             ctx.x_reshaped = x_reshaped
         else:
             out = ops_gpu.conv2d_forward(ctx.cl_ctx, ctx.cl_queue, x.data, weight.data, stride)
@@ -1220,7 +1209,7 @@ class Conv2d(Function):
             grad_x, grad_weight = ops_cpu.conv2d_backward(grad_output.data, x, x_reshaped, weight.data, stride)
         else:
             grad_x, grad_weight = ops_gpu.conv2d_backward(ctx.cl_ctx, ctx.cl_queue, grad_output.data, 
-                                                                     x.data, weight.data, stride)
+                                                          x.data, weight.data, stride)
 
         grad_x = Tensor(grad_x, device=grad_output.device)
         grad_weight = Tensor(grad_weight, device=grad_output.device)

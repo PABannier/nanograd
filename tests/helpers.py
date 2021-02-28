@@ -11,6 +11,46 @@ import torch.nn as nn
 import torch.optim
 
 from tqdm import trange
+import time
+import traceback
+
+
+#######################
+### CUSTOM PROFILER ###
+#######################
+
+class OpProfiler:
+    def __init__(self, func_name=None, device=None):
+        self.nano_fp, self.nano_bp = 0, 0
+        self.torch_fp, self.torch_bp = 0, 0
+
+        self.func_name = func_name
+        self.device = device
+
+        self.op_id = ""
+        self.start = 0
+    
+    def __call__(self, op_id):
+        assert op_id in [k for k in self.__dict__.keys() \
+                         if not k.startswith('__') and not callable(k)], 'Wrong operation id'
+        self.op_id = op_id
+        return self
+
+    def __enter__(self):
+        self.start = time.time()
+    
+    def __exit__(self, exc_type, exc_value, tb):
+        if exc_type is not None:
+            return False
+        
+        op_time = (time.time() - self.start) * 1000
+        setattr(self, self.op_id, op_time)
+        return True
+
+    def print(self):
+        print(f'{str(self.func_name)},  device: {str(self.device.name).lower()},  torch/nanograd ' + 
+              f'fp: {self.torch_fp:.2f} / {self.nano_fp:.2f} ms, ' + 
+              f'bp: {self.torch_bp:.2f} / {self.nano_bp:.2f} ms')
 
 
 #######################
@@ -23,6 +63,8 @@ def check_val(nano_tensor, torch_tensor, atol=1e-6, rtol=1e-3):
 def check_grad(nano_tensor, torch_tensor, atol=1e-6, rtol=1e-3):
     if nano_tensor.grad is not None and torch_tensor.grad is not None:
         np.testing.assert_allclose(nano_tensor.grad.data, torch_tensor.grad.numpy(), atol=atol, rtol=rtol)
+    elif nano_tensor.grad is None and torch_tensor is not None:
+        raise Exception('Nanograd tensor is None, while PyTorch tensor is not None')
 
 def check_val_and_grad(nano_tensor, torch_tensor, atol=1e-6, rtol=1e-3, atol_grad=1e-6, rtol_grad=1e-3):
     assert type(nano_tensor).__name__ == "Tensor", f"Expected Tensor object, got {type(nano_tensor).__name__}"
@@ -42,18 +84,20 @@ def create_identical_torch_tensor(*args):
 #######################
 
 def make_test_ops(shapes, fcn_nanograd, fcn_torch=None,test_backward:bool=True, discrete=False, 
-                  atol:float=1e-6, rtol:float=1e-3, atol_grad:float=1e-6, rtol_grad:float=1e-3, device=Device.CPU):
+                  atol:float=1e-6, rtol:float=1e-3, atol_grad:float=1e-6, rtol_grad:float=1e-3, device=Device.CPU, name=None):
+
     np.random.seed(0)
     torch.manual_seed(0)
 
+    profiler = OpProfiler(func_name=name, device=device)
     fcn_torch = fcn_nanograd if fcn_torch is None else fcn_torch
 
     tensors = []
     pytorch_tensors = []
     for shape in shapes:
         if discrete:
-            t = Tensor.randint(0, 10, shape)
-            pt = torch.tensor(t.data, dtype=torch.int32)
+            t = Tensor.randint(0, 10, shape, requires_grad=test_backward)
+            pt = torch.tensor(t.data, requires_grad=test_backward, dtype=torch.int32)
         else:
             t = Tensor.normal(30, 1, shape, requires_grad=test_backward)
             pt = torch.tensor(t.data, requires_grad=test_backward, dtype=torch.float32)
@@ -64,12 +108,18 @@ def make_test_ops(shapes, fcn_nanograd, fcn_torch=None,test_backward:bool=True, 
         tensors.append(t)
         pytorch_tensors.append(pt)
 
-    out = fcn_nanograd(*tensors)
-    out_torch = fcn_torch(*pytorch_tensors)
+    with profiler('nano_fp'):
+        out = fcn_nanograd(*tensors)
+    with profiler('torch_fp'):
+        out_torch = fcn_torch(*pytorch_tensors)
 
     if test_backward:
-       out.backward()
-       out_torch.sum().backward()
+        with profiler('nano_bp'):
+            out.mean().backward()
+        with profiler('torch_bp'):
+            out_torch.mean().backward()
+    
+    profiler.print()
 
     if device == Device.GPU:
         out.cpu()
@@ -77,8 +127,9 @@ def make_test_ops(shapes, fcn_nanograd, fcn_torch=None,test_backward:bool=True, 
     
     check_val(out, out_torch, atol=atol, rtol=rtol)
 
-    for tensor, pytorch_tensor in zip(tensors, pytorch_tensors):
-        check_grad(tensor, pytorch_tensor, atol=atol_grad, rtol=rtol_grad)
+    if test_backward:
+        for tensor, pytorch_tensor in zip(tensors, pytorch_tensors):
+            check_grad(tensor, pytorch_tensor, atol=atol_grad, rtol=rtol_grad)
     
 
 #######################
@@ -92,9 +143,11 @@ def get_same_pytorch_model(model):
         if isinstance(l, nnn.Linear):
             in_f, out_f = l.in_features, l.out_features
             weight = torch.Tensor(l.weight.data)
-            bias = torch.Tensor(l.bias.data)
             torch_layer = nn.Linear(in_f, out_f)
-            torch_layer.weight, torch_layer.bias = nn.Parameter(weight), nn.Parameter(bias)
+            torch_layer.weight = nn.Parameter(weight)
+            if hasattr(l, "bias"): 
+                bias = torch.Tensor(l.bias.data)
+                torch_layer.bias = nn.Parameter(bias)
             layers.append(torch_layer)
         
         elif isinstance(l, (nnn.BatchNorm1d, nnn.BatchNorm2d)):
@@ -174,8 +227,8 @@ def make_test_module(shape_inp, shape_target, model, atol=1e-5, atol_grad=1e-5, 
     np.random.seed(0)
     torch.manual_seed(0)
 
-    inp = Tensor.normal(0, 2, shape_inp, requires_grad=True)
-    target = Tensor.normal(0, 1, shape_target, requires_grad=True)
+    inp = Tensor.normal(30, 2, shape_inp, requires_grad=True)
+    target = Tensor.normal(30, 1, shape_target, requires_grad=True)
     inp_torch, targ_torch = create_identical_torch_tensor(inp, target)
 
     model_torch = get_same_pytorch_model(model)
@@ -187,14 +240,14 @@ def make_test_module(shape_inp, shape_target, model, atol=1e-5, atol_grad=1e-5, 
     ret = model(inp)
     ret_torch = model_torch(inp_torch)
 
-    ret.backward()
-    ret_torch.sum().backward()
+    ret.mean().backward()
+    ret_torch.mean().backward()
 
     if device == Device.GPU:
         ret.cpu()
         model.cpu()
 
-    check_val_and_grad(ret, ret_torch, atol=atol, atol_grad=atol_grad, rtol=rtol, rtol_grad=rtol_grad)
+    check_val(ret, ret_torch, atol=atol, rtol=rtol)
     check_model_parameters(model, model_torch, atol=atol, atol_grad=atol_grad, rtol=rtol, rtol_grad=rtol_grad)
 
 def check_model_parameters(ng_model, pytorch_model, atol=1e-5, atol_grad=1e-4, rtol=1e-7, rtol_grad=1e-5):
@@ -202,8 +255,8 @@ def check_model_parameters(ng_model, pytorch_model, atol=1e-5, atol_grad=1e-4, r
     for ng_l, pt_l in zip(ng_model.layers, pytorch_layers):
         if isinstance(ng_l, nnn.Linear):
             np.testing.assert_allclose(ng_l.weight.data, pt_l.weight.detach().numpy(), atol=atol, rtol=rtol)
-            np.testing.assert_allclose(ng_l.bias.data, pt_l.bias.detach().numpy(), atol=atol, rtol=rtol)
-
+            if hasattr(ng_l, "bias"):
+                np.testing.assert_allclose(ng_l.bias.data, pt_l.bias.detach().numpy(), atol=atol, rtol=rtol)
             if ng_l.weight.grad:
                 np.testing.assert_allclose(ng_l.weight.grad.data, pt_l.weight.grad.detach().numpy(), atol=atol_grad, rtol=rtol_grad)
                 np.testing.assert_allclose(ng_l.bias.grad.data, pt_l.bias.grad.detach().numpy(), atol=atol_grad, rtol=rtol_grad)

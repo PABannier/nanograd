@@ -32,7 +32,7 @@ class TestModuleCPU(unittest.TestCase):
     def test_linear(self):
             model = nnn.Sequential(nnn.Linear(256, 128), nnn.LeakyReLU(), nnn.Linear(128, 1), nnn.ReLU())
             make_test_module((8, 256), (8, 1), model, device=self.device)
-    
+    """
     def test_batchnorm1d(self):
         for num_features_1 in [16, 32, 64, 128, 256]:
             for num_features_2 in [16, 32, 64, 128, 256]:
@@ -50,7 +50,7 @@ class TestModuleCPU(unittest.TestCase):
                         model = nnn.Sequential(nnn.Conv1d(4, 32, kernel_size, stride, padding), nnn.MaxPool1d(2, 2), nnn.ReLU(),
                                                nnn.Conv1d(32, 64, kernel_size, stride, padding), nnn.AvgPool1d(2, 2), nnn.Flatten())
                         make_test_module((8, 4, 100), (8, 1), model, device=self.device)
-
+    
     def test_maxpool1d(self):
         for kernel_size in range(2, 5):
                 with self.subTest(kernel_size=kernel_size):
@@ -64,7 +64,7 @@ class TestModuleCPU(unittest.TestCase):
                     model = nnn.Sequential(nnn.Conv1d(4, 32, 3, 2), nnn.AvgPool1d(kernel_size), nnn.ReLU(),
                                            nnn.Conv1d(32, 64, 3, 2), nnn.AvgPool1d(kernel_size), nnn.Flatten())
                     make_test_module((8, 4, 100), (8, 1), model, device=self.device, atol_grad=1e-4)
-
+    
     def test_conv2d(self):
         for kernel_size in range(2, 5):
             for stride in range(1, 4):
@@ -92,14 +92,15 @@ class TestModuleCPU(unittest.TestCase):
                 make_test_module((8, 3, 80, 80), (8, 1), model, device=self.device, atol_grad=1e-4, rtol_grad=1e-5)
     
     def test_batchnorm2d(self):
-        for num_channels_1 in [8, 16]:  
-            for num_channels_2 in [16, 32]: 
+        for num_channels_1 in [4, 8]:  
+            for num_channels_2 in [8, 16]: 
                 if num_channels_1 < num_channels_2:
                     with self.subTest(num_channels_1=num_channels_1, num_channels_2=num_channels_2):
                         model = nnn.Sequential(nnn.Conv2d(3, num_channels_1, 2, 2), nnn.BatchNorm2d(num_channels_1), nnn.ReLU(),
                                             nnn.Conv2d(num_channels_1, num_channels_2, 3, 3), nnn.BatchNorm2d(num_channels_2), 
                                             nnn.ReLU(), nnn.Flatten())
-                        make_test_module((8, 3, 30, 30), (8, 1), model, device=self.device, atol_grad=5e-4, rtol_grad=1e-5)
+                        make_test_module((4, 3, 10, 10), (8, 1), model, device=self.device, atol_grad=1e-4, rtol_grad=1e-4)
+    """
 
 
 class TestModuleGPU(TestModuleCPU):

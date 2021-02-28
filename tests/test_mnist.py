@@ -109,7 +109,7 @@ class MNISTTestCPU(unittest.TestCase):
         assert evaluate(model, X_test, Y_test, device=self.device) > 0.91
 
 
-class MNISTTestGPU(MNISTTestCPU):
-    def __init__(self, *args, **kwargs):
-        super(MNISTTestGPU, self).__init__(*args, **kwargs)
-        self.device = Device.GPU
+#class MNISTTestGPU(MNISTTestCPU):
+#    def __init__(self, *args, **kwargs):
+#        super(MNISTTestGPU, self).__init__(*args, **kwargs)
+#        self.device = Device.GPU

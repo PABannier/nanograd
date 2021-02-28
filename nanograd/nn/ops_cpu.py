@@ -1,5 +1,6 @@
 import numpy as np
 from nanograd.nn.conv_ops import get_conv1d_output_size, get_conv2d_output_size
+from nanograd.autograd import Function
 
 # *************************************
 # ************** Helpers **************
@@ -31,236 +32,369 @@ def inner_slice(a, indices):
     slices = [(p[0]+padding[i][0], p[1]+padding[i][0]) for i, p in enumerate(indices)]
     return a[tuple([slice(x[0], x[1], None) for x in slices])]
 
-def one_hot_encoding(a, num_classes):
-    idx = a.astype(int)
-    out = np.zeros((idx.shape[0], num_classes))
-    out[np.arange(len(out)), idx] = 1
-    return out
-
 # *************************************
 # *********** Forward passes **********
 # *************************************
 
-def unsqueeze_forward(a, axis):
-    return np.expand_dims(a, axis)
-
-def squeeze_forward(a, axis):
-    return np.squeeze(a, axis)
-
-def slice_forward(a, indices):
-    return inner_slice(a, indices)
-
-def transpose_forward(a):
-    return a.T
-
-def reshape_forward(a, shape):
-    return a.reshape(shape)
-
-def max_forward(a, axis):
-    out = np.amax(a, axis=None if axis is None else tuple(axis), keepdims=True) 
-    if axis is not None:
-        out = out.reshape([a.shape[i] for i in range(len(a.shape)) if i not in axis])
-    return out
-
-def min_forward(a, axis):
-    out = np.amin(a, axis=None if axis is None else tuple(axis), keepdims=True)
-    if axis is not None:
-        out = out.reshape([a.shape[i] for i in range(len(a.shape)) if i not in axis])
-    return out
-
-def sum_forward(a, axis):
-    if axis is None:
-        return np.array(a.sum())
-    return a.sum(axis=axis)
-
-def add_forward(a, b):
-    return a + b
-
-def mul_forward(a, b):
-    return a * b
-
-def matmul_forward(a, b):
-    return a @ b
-
-def log_forward(a):
-    return np.log(a)
-
-def exp_forward(a):
-    return np.exp(a)
-
-def neg_forward(a):
-    return -a
-
-def pow_forward(a, exp):
-    return a ** exp
-
-def relu_forward(a):
-    return np.maximum(a, 0)
-
-def sigmoid_forward(a):
-    return 1.0 / (1.0 + np.exp(-a))
-
-def tanh_forward(a):
-    return np.tanh(a)
-
-def conv1d_forward(a, weight, stride):
-    batch_size, in_channel, signal_length = a.shape
-    num_filters, _, kernel_length = weight.shape
-    output_length = get_conv1d_output_size(signal_length, kernel_length, stride, 0)
-
-    stride_shape = (signal_length, 1, in_channel * signal_length, stride)
-    strides = a.data.itemsize * np.array(stride_shape)
-
-    cols = np.lib.stride_tricks.as_strided(
-        x=a,
-        strides=strides,
-        shape=(in_channel, kernel_length, batch_size, output_length),
-        writeable=False
-    )
-
-    cols = cols.transpose(2, 0, 1, 3)
-    weight = weight.transpose(1, 2, 0) 
-
-    ret = np.tensordot(cols, weight, axes=[(1, 2), (0, 1)])
-    ret = ret.transpose(0, 2, 1)
-    return ret, cols.transpose(0, 1, 3, 2) 
-
-
-def conv2d_forward(a, weight, stride):
-    batch_size, in_channel, im_height, im_width = a.shape
-    num_filters, _, kernel_height, kernel_width = weight.shape
-    output_height, output_width = get_conv2d_output_size(im_height, im_width, (kernel_height, kernel_width), stride, 0)
-
-    strides = (im_height * im_width, im_width, 1, in_channel * im_height * im_height, stride * im_width, stride)
-    strides = a.itemsize * np.array(strides)
-
-    cols = np.lib.stride_tricks.as_strided(
-        x=a,
-        shape=(in_channel, kernel_height, kernel_width, batch_size, output_height, output_width),
-        strides=strides,
-        writeable=False
-    )
-
-    cols = cols.transpose(3, 0, 1, 2, 4, 5)
-    weight = weight.transpose(1, 2, 3, 0)
-
-    #jiyxYX,iyxk -> jYXk -> jkYX
-    ret = np.tensordot(cols, weight, axes=[(1, 2, 3), (0, 1, 2)])
-    ret = ret.transpose(0, 3, 1, 2)
-    return ret, cols.transpose(0, 1, 4, 5, 2, 3) 
-
-# *************************************
-# ********** Backward passes **********
-# *************************************
-
-def unsqueeze_backward(grad_output, axis):
-    return grad_output.squeeze(axis)
-
-def squeeze_backward(grad_output, axis):
-    return np.expand_dims(grad_output, axis)
-
-def add_backward(grad_output, a_shape, b_shape):
-    grad_a = np.ones(a_shape) * grad_output.data
-    grad_b = np.ones(b_shape) * grad_output.data
-    return unbroadcast(grad_a, a_shape), unbroadcast(grad_b, b_shape)
-
-def mul_backward(grad_output, a, b):
-    grad_a = grad_output * b
-    grad_b = grad_output * a
-    return unbroadcast(grad_a, a.shape), unbroadcast(grad_b, b.shape)
-
-def matmul_backward(grad_output, a, b):
-    grad_a = np.matmul(grad_output, b.T)
-    grad_b = np.matmul(a.T, grad_output)
-    return grad_a, grad_b
-
-def log_backward(grad_output, a):
-    return grad_output / a
-
-def exp_backward(grad_output, a):
-    return grad_output * np.exp(a)
-
-def neg_backward(grad_output):
-    return -grad_output
-
-def pow_backward(grad_output, a, exp):
-    return exp * (a ** (exp-1)) * grad_output
-
-def relu_backward(grad_output, a):
-    return grad_output * (a >= 0)
-
-def sigmoid_backward(grad_output, a):
-    return grad_output * sigmoid(a) * (1 - sigmoid(a))
-
-def tanh_backward(grad_output, a):
-    return grad_output * (1 - np.power(np.tanh(a), 2))
-
-def slice_backward(grad_output, shape, fwd_indices):
-    indices = [(0 - p[0], grad_output.shape[i] + (shape[i] - p[1])) for i, p in enumerate(fwd_indices)]
-    return inner_slice(grad_output, indices)
-
-def transpose_backward(grad_output):
-    return grad_output.T
-
-def reshape_backward(grad_output, shape):
-    return grad_output.reshape(shape)
-
-def max_backward(grad_output, inp, out, axis):
-    shape = [1 if axis is None or i in axis else inp.shape[i] for i in range(len(inp.shape))]
-    ret2 = (inp == out.reshape(shape))
-    div = ret2.sum(axis=None if axis is None else tuple(axis), keepdims=True) 
-    return ret2 * (grad_output.reshape(shape)).data / div
-
-def min_backward(grad_output, inp, out, axis):
-    shape = [1 if axis is None or i in axis else inp.shape[i] for i in range(len(inp.shape))]
-    ret2 = (inp == out.reshape(shape))
-    div = ret2.sum(axis=None if axis is None else tuple(axis), keepdims=True) 
-    return ret2 * (grad_output.reshape(shape)).data / div
-
-def sum_backward(grad_output, a, axis):
-    axis = [axis] if type(axis) == int else axis
-    shape = [1 if axis is None or i in axis else a.shape[i] for i in range(len(a.shape))]
-    return grad_output.reshape(shape) + np.zeros_like(a) # Useful for broadcasting
-
-def conv1d_backward(grad_output, x, x_reshaped, weight, stride):
-    batch_size, in_channel, signal_length = x.shape
-    num_filters, _, kernel_length = weight.shape
-    _, _, output_length = grad_output.shape
-
-    #grad_weight = np.einsum('ikX, ijXx -> kjx', grad_output, x_reshaped) SLOWER than using tensordot
-    grad_weight = np.tensordot(grad_output, x_reshaped, axes=[(0, 2), (0, 2)])
-
-    grad_x = np.zeros((batch_size, in_channel, signal_length), dtype=grad_output.dtype)
-
-    for k in range(output_length):
-        X = k % output_length
-        iX = X * stride
-
-        #grad_x[:, :, iX:iX+kernel_length] += np.einsum('ik, kjy->ijy', grad_output[:, :, X], weight) SLOWER than using tensordot
-        grad_x[:, :, iX:iX+kernel_length] += np.tensordot(grad_output[:, :, X], weight, axes=[(1), (0)])
+class OneHot(Function):
+    @staticmethod
+    def forward(ctx, input, num_classes):
+        idx = input.astype(int)
+        out = np.zeros((idx.shape[0], num_classes))
+        out[np.arange(len(out)), idx] = 1
+        return out
     
-    grad_x = grad_x.reshape((batch_size, in_channel, signal_length))
+    @staticmethod
+    def backward(ctx, grad_output):
+        raise NotImplementedError
 
-    return grad_x, grad_weight
+
+class Unsqueeze(Function):
+    @staticmethod
+    def forward(ctx, input, axis):
+        ctx.save_for_backward(axis)
+        return np.expand_dims(input, axis)
+    
+    @staticmethod
+    def backward(ctx, grad_output):
+        axis = ctx.saved_tensors[0]
+        return grad_output.squeeze(axis)
+
+
+class Squeeze(Function):
+    @staticmethod
+    def forward(ctx, input, axis):
+        ctx.save_for_backward(axis)
+        return np.squeeze(input, axis)
+    
+    @staticmethod
+    def backward(ctx, grad_output):
+        axis = ctx.saved_tensors
+        return np.expand_dims(grad_output, axis)
+
+
+class Slice(Function):
+    @staticmethod
+    def forward(ctx, input, indices):
+        ctx.save_for_backward(input.shape, indices)
+        return inner_slice(input, indices)
+    
+    @staticmethod
+    def backward(ctx, grad_output):
+        shape, indices = ctx.saved_tensors
+        indices = [(0 - p[0], grad_output.shape[i] + (shape[i] - p[1])) for i, p in enumerate(indices)]
+        return inner_slice(grad_output, indices)
+
+
+class Transpose(Function):
+    @staticmethod
+    def forward(ctx, input):
+        return input.T
+    
+    @staticmethod
+    def backward(ctx, grad_output):
+        return grad_output.T
+
+
+class Reshape(Function):
+    @staticmethod
+    def forward(ctx, input, shape):
+        ctx.save_for_backward(input.shape)
+        return input.reshape(shape)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        shape = ctx.saved_tensors[0]
+        return grad_output.reshape(shape)
+
+
+class Max(Function):
+    @staticmethod
+    def forward(ctx, input, axis):
+        axis = [axis] if isinstance(axis, int) else axis
+        out = np.amax(input, axis=None if axis is None else tuple(axis), keepdims=True)
+        ctx.save_for_backward(input, axis, out)
+        if axis is not None:
+            out = out.reshape([input.shape[i] for i in range(len(input.shape)) if i not in axis])
+        return out
+    
+    @staticmethod
+    def backward(ctx, grad_output):
+        input, axis, out = ctx.saved_tensors
+        shape = [1 if axis is None or i in axis else input.shape[i] for i in range(len(input.shape))]
+        ret2 = (input == out.reshape(shape))
+        div = ret2.sum(axis=None if axis is None else tuple(axis), keepdims=True) 
+        return ret2 * (grad_output.reshape(shape)).data / div
+
+    
+class Min(Function):
+    @staticmethod
+    def forward(ctx, input, axis):
+        axis = [axis] if isinstance(axis, int) else axis
+        out = np.amin(input, axis=None if axis is None else tuple(axis), keepdims=True)
+        ctx.save_for_backward(input, axis, out)
+        if axis is not None:
+            out = out.reshape([input.shape[i] for i in range(len(input.shape)) if i not in axis])
+        return out
+    
+    @staticmethod
+    def backward(ctx, grad_output):
+        input, axis, out = ctx.saved_tensors
+        shape = [1 if axis is None or i in axis else input.shape[i] for i in range(len(input.shape))]
+        ret2 = (input == out.reshape(shape))
+        div = ret2.sum(axis=None if axis is None else tuple(axis), keepdims=True) 
+        return ret2 * (grad_output.reshape(shape)).data / div
+
+
+class Sum(Function):
+    @staticmethod
+    def forward(ctx, input, axis=None):
+        ctx.save_for_backward(input, axis)
+        if axis is None:
+            return np.array([input.sum()])
+        return input.sum(axis=axis)
+    
+    @staticmethod
+    def backward(ctx, grad_output):
+        input, axis = ctx.saved_tensors
+        axis = [axis] if type(axis) == int else axis
+        shape = [1 if axis is None or i in axis else input.shape[i] for i in range(len(input.shape))]
+        return grad_output.reshape(shape) + np.zeros_like(input) # Useful for broadcasting
+
+
+class Add(Function):
+    @staticmethod
+    def forward(ctx, a, b):
+        ctx.save_for_backward(a.shape, b.shape)
+        return a + b
+    
+    @staticmethod
+    def backward(ctx, grad_output):
+        a_shape, b_shape = ctx.saved_tensors
+        grad_a = grad_output * np.ones(a_shape)
+        grad_b = grad_output * np.ones(b_shape)
+        return unbroadcast(grad_a, a_shape), unbroadcast(grad_b, b_shape)
+
+
+class Mul(Function):
+    @staticmethod
+    def forward(ctx, a, b):
+        ctx.save_for_backward(a, b)
+        return a * b
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        a, b = ctx.saved_tensors
+        grad_a = grad_output * b
+        grad_b = grad_output * a
+        return unbroadcast(grad_a, a.shape), unbroadcast(grad_b, b.shape)
+
+
+class MatMul(Function):
+    @staticmethod
+    def forward(ctx, a, b):
+        ctx.save_for_backward(a, b)
+        return a @ b
+    
+    @staticmethod
+    def backward(ctx, grad_output):
+        a, b = ctx.saved_tensors
+        grad_a = grad_output @ b.T
+        grad_b = a.T @ grad_output
+        return grad_a, grad_b
+
+
+class Log(Function):
+    @staticmethod
+    def forward(ctx, input):
+        ctx.save_for_backward(input)
+        return np.log(input)
+    
+    @staticmethod
+    def backward(ctx, grad_output):
+        input = ctx.saved_tensors[0]
+        return grad_output / input
+
+
+class Exp(Function):
+    @staticmethod
+    def forward(ctx, input):
+        ctx.save_for_backward(input)
+        return np.exp(input)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        input = ctx.saved_tensors[0]
+        return grad_output * np.exp(input)
+
+
+class Neg(Function):
+    @staticmethod
+    def forward(ctx, input):
+        return -input
+    
+    @staticmethod
+    def backward(ctx, grad_output):
+        return -grad_output
+
+
+class Pow(Function):
+    @staticmethod
+    def forward(ctx, input, power):
+        ctx.save_for_backward(input, power)
+        return input ** power
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        input, power = ctx.saved_tensors
+        return unbroadcast(power * (input ** (power-1.0)) * grad_output, input.shape), \
+               unbroadcast((input ** power) * np.log(input) * grad_output, power.shape)
+
+
+class ReLU(Function):
+    @staticmethod
+    def forward(ctx, input):
+        ctx.save_for_backward(input)
+        return np.maximum(input, 0)
+    
+    @staticmethod
+    def backward(ctx, grad_output):
+        input = ctx.saved_tensors[0]
+        return (input >= 0) * grad_output
+
+
+class Sigmoid(Function):
+    @staticmethod
+    def forward(ctx, input):
+        ctx.save_for_backward(input)
+        return sigmoid(input)
+    
+    @staticmethod
+    def backward(ctx, grad_output):
+        input = ctx.saved_tensors[0]
+        return grad_output * sigmoid(input) * (1 - sigmoid(input))
+
+
+class Tanh(Function):
+    @staticmethod
+    def forward(ctx, input):
+        ctx.save_for_backward(input)
+        return np.tanh(input)
+    
+    @staticmethod
+    def backward(ctx, grad_output):
+        input = ctx.saved_tensors[0]
+        return grad_output * (1 - np.power(np.tanh(input), 2))
+
+
+class Conv1d(Function):
+    @staticmethod
+    def forward(ctx, input, weight, stride):
+        if not isinstance(stride, int):
+            stride = int(stride[0])
+        batch_size, in_channel, signal_length = input.shape
+        num_filters, _, kernel_length = weight.shape
+        output_length = get_conv1d_output_size(signal_length, kernel_length, stride, 0)
+
+        ctx.save_for_backward(input, weight, stride)
+
+        stride_shape = (signal_length, 1, in_channel * signal_length, stride)
+        strides = input.data.itemsize * np.array(stride_shape)
+
+        cols = np.lib.stride_tricks.as_strided(
+            x=input,
+            strides=strides,
+            shape=(in_channel, kernel_length, batch_size, output_length),
+            writeable=False
+        )
+
+        cols = cols.transpose(2, 0, 1, 3)
+        weight = weight.transpose(1, 2, 0) 
+
+        ret = np.tensordot(cols, weight, axes=[(1, 2), (0, 1)])
+        ret = ret.transpose(0, 2, 1)
+
+        ctx.save_for_backward(cols.transpose(0, 1, 3, 2))
+        return ret
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        input, weight, stride, input_reshaped = ctx.saved_tensors
+
+        batch_size, in_channel, signal_length = input.shape
+        num_filters, _, kernel_length = weight.shape
+        _, _, output_length = grad_output.shape
+
+        #grad_weight = np.einsum('ikX, ijXx -> kjx', grad_output, x_reshaped) SLOWER than using tensordot
+        grad_weight = np.tensordot(grad_output, input_reshaped, axes=[(0, 2), (0, 2)])
+
+        grad_x = np.zeros((batch_size, in_channel, signal_length), dtype=grad_output.dtype)
+
+        for k in range(output_length):
+            X = k % output_length
+            iX = X * stride
+
+            #grad_x[:, :, iX:iX+kernel_length] += np.einsum('ik, kjy->ijy', grad_output[:, :, X], weight) #SLOWER than using tensordot
+            grad_x[:, :, iX:iX+kernel_length] += np.tensordot(grad_output[:, :, X], weight, axes=[(1), (0)])
         
-def conv2d_backward(grad_output, x, x_reshaped, weight, stride):
-    batch_size, in_channel, im_height, im_width = x.shape
-    num_filters, _, kernel_height, kernel_width = weight.shape
-    _, _, output_height, output_width = grad_output.shape
+        grad_x = grad_x.reshape((batch_size, in_channel, signal_length))
+
+        return grad_x, grad_weight
+
+
+class Conv2d(Function):
+    @staticmethod
+    def forward(ctx, input, weight, stride):
+        if not isinstance(stride, int):
+            stride = int(stride[0])
+        batch_size, in_channel, im_height, im_width = input.shape
+        num_filters, _, kernel_height, kernel_width = weight.shape
+        output_height, output_width = get_conv2d_output_size(im_height, im_width, (kernel_height, kernel_width), stride, 0)
+
+        ctx.save_for_backward(weight, stride)
+
+        strides = (im_height * im_width, im_width, 1, in_channel * im_height * im_height, stride * im_width, stride)
+        strides = input.itemsize * np.array(strides)
+
+        cols = np.lib.stride_tricks.as_strided(
+            x=input,
+            shape=(in_channel, kernel_height, kernel_width, batch_size, output_height, output_width),
+            strides=strides,
+            writeable=False
+        )
+
+        cols = cols.transpose(3, 0, 1, 2, 4, 5)
+        weight = weight.transpose(1, 2, 3, 0)
+
+        #jiyxYX,iyxk -> jYXk -> jkYX
+        ret = np.tensordot(cols, weight, axes=[(1, 2, 3), (0, 1, 2)])
+        ret = ret.transpose(0, 3, 1, 2)
+
+        ctx.save_for_backward(input, cols.transpose(0, 1, 4, 5, 2, 3))
+
+        return ret
     
-    #grad_weight = np.einsum('ikYX, ijYXyx -> kjyx', grad_output, x_reshaped) SLOWER than using tensordot 
-    grad_weight = np.tensordot(grad_output, x_reshaped, axes=[(0,2,3),(0,2,3)])
+    @staticmethod
+    def backward(ctx, grad_output):
+        weight, stride, input, input_reshaped = ctx.saved_tensors
 
-    grad_x = np.zeros((batch_size, in_channel, im_height, im_width), dtype=grad_output.dtype)
+        batch_size, in_channel, im_height, im_width = input.shape
+        num_filters, _, kernel_height, kernel_width = weight.shape
+        _, _, output_height, output_width = grad_output.shape
+        
+        #grad_weight = np.einsum('ikYX, ijYXyx -> kjyx', grad_output, x_reshaped) SLOWER than using tensordot 
+        grad_weight = np.tensordot(grad_output, input_reshaped, axes=[(0,2,3),(0,2,3)])
 
-    for k in range(output_height * output_width):
-        X, Y = k % output_width, k // output_width
-        iX, iY = X * stride, Y * stride
+        grad_x = np.zeros((batch_size, in_channel, im_height, im_width), dtype=grad_output.dtype)
 
-        # grad_x[:,:, iY:iY+kernel_height, iX:iX+kernel_width] += np.einsum('ik,kjyx->ijyx', grad_output[:,:,Y,X], weight) 
-        # SLOWER than using tensordot
-        grad_x[:,:, iY:iY+kernel_height, iX:iX+kernel_width] += np.tensordot(grad_output[:,:,Y,X], weight, axes=[(1), (0)])
+        for k in range(output_height * output_width):
+            X, Y = k % output_width, k // output_width
+            iX, iY = X * stride, Y * stride
 
-    grad_x = grad_x.reshape((batch_size, in_channel, im_height, im_width))
+            # grad_x[:,:, iY:iY+kernel_height, iX:iX+kernel_width] += np.einsum('ik,kjyx->ijyx', grad_output[:,:,Y,X], weight) 
+            # SLOWER than using tensordot
+            grad_x[:,:, iY:iY+kernel_height, iX:iX+kernel_width] += np.tensordot(grad_output[:,:,Y,X], weight, axes=[(1), (0)])
 
-    return grad_x, grad_weight
+        grad_x = grad_x.reshape((batch_size, in_channel, im_height, im_width))
+
+        return grad_x, grad_weight

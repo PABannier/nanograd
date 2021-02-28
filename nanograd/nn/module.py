@@ -261,9 +261,9 @@ class Linear(Module):
                 Tensor: (batch_size, out_features)
         """
         if self.with_bias:
-            out = x @ self.weight.T() + self.bias.unsqueeze(1).T()
+            out = x @ self.weight.T + self.bias.T
         else:
-            out = x @ self.weight.T()
+            out = x @ self.weight.T
            
         out.name = "lin_res"
         return out   
@@ -303,7 +303,7 @@ class BatchNorm1d(Module):
         if self.is_train == True:
             batch_mean = x.mean(0)
             batch_var = ((x - batch_mean.reshape(shape=[1, -1])) ** 2).mean(0)
-            batch_empirical_var = ((x - batch_mean.reshape(shape=[1, -1])) ** 2).sum(0) / (x.shape[0] - 1)
+            batch_empirical_var = ((x - batch_mean.reshape(shape=[1, -1])) ** 2).sum(axis=0) / (x.shape[0] - 1)
 
             self.running_mean = (1. - self.momentum) * self.running_mean + self.momentum * batch_mean
             self.running_var = (1. - self.momentum) * self.running_var + self.momentum * batch_empirical_var
@@ -682,7 +682,7 @@ class NLLLoss(Module):
             Tensor: loss, stored as a float in a Tensor object 
         """
         batch_size, num_classes = log_probs.shape
-        labels = target.one_hot(num_classes)
+        labels = target.onehot(num_classes=num_classes)
         return -(log_probs * labels).mean()
         
 

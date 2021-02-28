@@ -3,13 +3,12 @@ import numpy as np
 import functools
 
 from nanograd.nn.conv_ops import get_conv1d_output_size, get_conv2d_output_size
+from nanograd.nn.buffer import GPUBuffer
+from nanograd.autograd import Function
 
 try:
     import pyopencl as cl
-    PYOPENCL_AVAILABLE = True
-
 except ImportError:
-    PYOPENCL_AVAILABLE = False
     warnings.warn("PyOpenCL is not available on this computer. Can't use \
                    parallel computing. Please install it to move comptutations \
                    to move the GPU.")
@@ -17,20 +16,6 @@ except ImportError:
 # *************************************
 # ****** OpenCL helper functions ******
 # *************************************
-
-class GPUBuffer:
-    def __init__(self, ctx, shape, hostbuf=None):
-        if isinstance(shape, int): shape = [shape]
-        self.shape, self.dtype = tuple(shape), np.float32
-
-        if isinstance(hostbuf, GPUBuffer):
-            self.cl = hostbuf.cl
-        else:
-            self.cl = cl.Buffer(ctx, cl.mem_flags.READ_WRITE | (cl.mem_flags.COPY_HOST_PTR if hostbuf is not None else 0), 
-                                np.int32(4*np.prod(shape)), hostbuf=hostbuf.astype(np.float32).ravel() if hostbuf is not None else None)
-
-    def __repr__(self):
-        return f'<GPUBuffer with shape {self.shape}>'
 
 def compute_output_size(x, y):
     n_dims = max(len(x.shape), len(y.shape))
@@ -59,9 +44,9 @@ def compute_broadcasted_dimensions(n_dims, x_shape, y_shape):
              (x_shape[i] > 1, y_shape[i] > 1))
     return dimension_list, comp_list
 
-def unbroadcast(ctx, queue, out, in_shape):
+def unbroadcast(ctx, out, in_shape):
     sum_axis = [i for i in range(len(in_shape)) if in_shape[i]==1 and out.shape[i]>1] if in_shape != (1,) else None
-    return reduce_op(ctx, queue, "out += a", "out", out, sum_axis, keepdims=True)
+    return reduce_op(ctx, "out += a", "out", out, sum_axis, keepdims=True)
 
 @functools.lru_cache()
 def get_binary_op_kernel(ctx, code, complist):
@@ -126,54 +111,55 @@ def get_reduce_op_kernel(ctx, code, code2, start):
         res_g[gid] = """+code2+""";
   }""").build()
 
-def element_wise_binary_op(ctx, queue, code, x, y):
+def element_wise_binary_op(ctx, code, x, y):
     n_dims, ret_shape, x_shape, y_shape = compute_output_size(x, y)
     dimension_list, comp_list = compute_broadcasted_dimensions(n_dims, x_shape, y_shape)
 
-    prgm = get_binary_op_kernel(ctx, code, tuple(comp_list))
+    prgm = get_binary_op_kernel(ctx.cl_ctx, code, tuple(comp_list))
 
-    out = GPUBuffer(ctx, ret_shape, hostbuf=np.zeros(ret_shape, dtype=np.float32))
+    out = GPUBuffer(ctx.cl_ctx, ret_shape, hostbuf=np.zeros(ret_shape, dtype=np.float32))
 
     prod_list = np.array(dimension_list, dtype=np.int32)[-1::-1].cumprod(dtype=np.int32)[-1::-1]
-    prgm.binop(queue, [prod_list[0]] if len(dimension_list) > 0 else [1], None, 
+    prgm.binop(ctx.cl_queue, [prod_list[0]] if len(dimension_list) > 0 else [1], None, 
                x.cl, y.cl, out.cl, *dimension_list, *(prod_list[1:]))
     return out
 
-def unary_op(ctx, queue, code, x):
-    out = GPUBuffer(ctx, x.shape, hostbuf=np.zeros(x.shape, dtype=np.float32))
-    prgm = get_unary_op_kernel(ctx, code)
-    prgm.unop(queue, [np.prod(out.shape)], None, x.cl, out.cl)
+def unary_op(ctx, code, x):
+    out = GPUBuffer(ctx.cl_ctx, x.shape, hostbuf=np.zeros(x.shape, dtype=np.float32))
+    prgm = get_unary_op_kernel(ctx.cl_ctx, code)
+    prgm.unop(ctx.cl_queue, [np.prod(out.shape)], None, x.cl, out.cl)
     return out
 
-def reduce_op(ctx, queue, code, code2, inp, axis=None, keepdims=False, start="0.0"):
-    if isinstance(axis, int): axis = [axis]
+def reduce_op(ctx, code, code2, inp, axis=None, keepdims=False, start="0.0"):
     if axis is None:
         osize = [1]*len(inp.shape)
     else:
         osize = np.array(inp.shape)
         osize[list(axis)] = 1
 
-    ret = GPUBuffer(ctx, osize if keepdims else osize[osize != 1], hostbuf=None)
+    ret = GPUBuffer(ctx.cl_ctx, osize, hostbuf=None)
 
     if axis is None: 
         ret.shape = (1,)
     
-    prgm = get_reduce_op_kernel(ctx, code, code2, start)
+    prgm = get_reduce_op_kernel(ctx.cl_ctx, code, code2, start)
 
-    prgm.reduce(queue, [np.prod(osize)], None, inp.cl,
+    prgm.reduce(ctx.cl_queue, [np.prod(osize)], None, inp.cl,
         np.int32(np.prod(inp.shape) // np.prod(osize)), ret.cl,
         np.int32(np.prod(osize)), np.int32(len(osize)),
-        cl.Buffer(ctx, cl.mem_flags.READ_WRITE | cl.mem_flags.COPY_HOST_PTR, 
+        cl.Buffer(ctx.cl_ctx, cl.mem_flags.READ_WRITE | cl.mem_flags.COPY_HOST_PTR, 
                   hostbuf=np.array(inp.shape, dtype=np.int32)),
-        cl.Buffer(ctx, cl.mem_flags.READ_WRITE | cl.mem_flags.COPY_HOST_PTR, 
+        cl.Buffer(ctx.cl_ctx, cl.mem_flags.READ_WRITE | cl.mem_flags.COPY_HOST_PTR, 
                   hostbuf=np.array(osize, dtype=np.int32))
     )
     return ret
 
-def perm_axis_op(ctx, queue, inp, order=(1,0)):
+def perm_axis_op(ctx, inp, order=(1,0)):
+    if len(inp.shape) == 1:
+        inp.shape = (inp.shape[0], 1)
     out_size = np.array(inp.shape)[list(order)]
-    ret = GPUBuffer(ctx, out_size)
-    prgm = cl.Program(ctx, """
+    ret = GPUBuffer(ctx.cl_ctx, out_size)
+    prgm = cl.Program(ctx.cl_ctx, """
         __kernel void perm(__global const float *a_g, __global float *res_g, int n_axis,
                             __global const int *shape, __global const int *order) {
             int gid = get_global_id(0);
@@ -189,16 +175,16 @@ def perm_axis_op(ctx, queue, inp, order=(1,0)):
             }"""
     ).build()
 
-    prgm.perm(queue, [np.prod(out_size)], None, inp.cl, ret.cl, np.int32(len(out_size)),
-         cl.Buffer(ctx, cl.mem_flags.READ_WRITE | cl.mem_flags.COPY_HOST_PTR, hostbuf=np.array(inp.shape, dtype=np.int32)),
-         cl.Buffer(ctx, cl.mem_flags.READ_WRITE | cl.mem_flags.COPY_HOST_PTR, hostbuf=np.array(order, dtype=np.int32)))
+    prgm.perm(ctx.cl_queue, [np.prod(out_size)], None, inp.cl, ret.cl, np.int32(len(out_size)),
+         cl.Buffer(ctx.cl_ctx, cl.mem_flags.READ_WRITE | cl.mem_flags.COPY_HOST_PTR, hostbuf=np.array(inp.shape, dtype=np.int32)),
+         cl.Buffer(ctx.cl_ctx, cl.mem_flags.READ_WRITE | cl.mem_flags.COPY_HOST_PTR, hostbuf=np.array(order, dtype=np.int32)))
     return ret
 
-def inner_slice(ctx, queue, inp, arg):
+def inner_slice(ctx, inp, arg):
     shift = [y[0] for y in arg]
     out_shape = [y[1]-y[0] for y in arg]
-    ret = GPUBuffer(ctx, out_shape)
-    prgm = cl.Program(ctx, """
+    ret = GPUBuffer(ctx.cl_ctx, out_shape)
+    prgm = cl.Program(ctx.cl_ctx, """
         __kernel void gslice(__global const float *input, __global float *output, int prod, int n_dims,
                        __global const int *shape_x, __global const int *shape_ret,
                        __global const int *shift) {
@@ -215,17 +201,17 @@ def inner_slice(ctx, queue, inp, arg):
         }
     """).build()
 
-    prgm.gslice(queue, [np.prod(ret.shape)], None, inp.cl, ret.cl, np.int32(np.prod(ret.shape)), np.int32(len(ret.shape)),
-                cl.Buffer(ctx, cl.mem_flags.READ_WRITE | cl.mem_flags.COPY_HOST_PTR, hostbuf=np.array(inp.shape, dtype=np.int32)),
-                cl.Buffer(ctx, cl.mem_flags.READ_WRITE | cl.mem_flags.COPY_HOST_PTR, hostbuf=np.array(ret.shape, dtype=np.int32)),
-                cl.Buffer(ctx, cl.mem_flags.READ_WRITE | cl.mem_flags.COPY_HOST_PTR, hostbuf=np.array(shift, dtype=np.int32)))
+    prgm.gslice(ctx.cl_queue, [np.prod(ret.shape)], None, inp.cl, ret.cl, np.int32(np.prod(ret.shape)), np.int32(len(ret.shape)),
+                cl.Buffer(ctx.cl_ctx, cl.mem_flags.READ_WRITE | cl.mem_flags.COPY_HOST_PTR, hostbuf=np.array(inp.shape, dtype=np.int32)),
+                cl.Buffer(ctx.cl_ctx, cl.mem_flags.READ_WRITE | cl.mem_flags.COPY_HOST_PTR, hostbuf=np.array(ret.shape, dtype=np.int32)),
+                cl.Buffer(ctx.cl_ctx, cl.mem_flags.READ_WRITE | cl.mem_flags.COPY_HOST_PTR, hostbuf=np.array(shift, dtype=np.int32)))
     return ret
 
-def matmul_op(ctx, queue, a, b):
+def matmul_op(ctx, a, b):
     cnt = np.prod(a.shape[0:-2]) if len(a.shape) > 2 else 1
     isize, msize, osize = np.int32(a.shape[-2]), np.int32(a.shape[-1]), np.int32(b.shape[-1])
-    ret = GPUBuffer(ctx, list(a.shape[0:-2])+[isize, osize])
-    prgm = cl.Program(ctx, """
+    ret = GPUBuffer(ctx.cl_ctx, list(a.shape[0:-2])+[isize, osize])
+    prgm = cl.Program(ctx.cl_ctx, """
         __kernel void matmul(__global const float *input, __global const float *weight, __global float *res,
                             int isize, int is0, int is1, int msize, int ws0, int ws1, int osize) {
             int stride = get_global_id(2);
@@ -240,15 +226,15 @@ def matmul_op(ctx, queue, a, b):
         }
     """).build()
 
-    prgm.matmul(queue, [isize, osize, cnt], None, 
+    prgm.matmul(ctx.cl_queue, [isize, osize, cnt], None, 
                 a.cl, b.cl, ret.cl, isize, msize, 
                 np.int32(1), msize, np.int32(1), osize, osize)
     return ret
 
-def one_hot_encoding(ctx, queue, a, num_classes):
-    ret = GPUBuffer(ctx, (a.shape[0], num_classes))
+def one_hot_encoding(ctx, a, num_classes):
+    ret = GPUBuffer(ctx.cl_ctx, (a.shape[0], num_classes))
     n_rows, n_cols = np.int32(a.shape[0]), np.int32(num_classes)
-    prgm = cl.Program(ctx, """
+    prgm = cl.Program(ctx.cl_ctx, """
         __kernel void one_hot(__global const float *labels, __global float *res, 
                               const int n_cols) {
             int gid0 = get_global_id(0);
@@ -258,14 +244,14 @@ def one_hot_encoding(ctx, queue, a, num_classes):
         }
     """).build()
 
-    prgm.one_hot(queue, [n_rows, n_cols], None, a.cl, ret.cl, n_cols)
+    prgm.one_hot(ctx.cl_queue, [n_rows, n_cols], None, a.cl, ret.cl, n_cols)
     return ret
 
-def pad1d_op(ctx, queue, a, pad, length):
+def pad1d_op(ctx, a, pad, length):
     padded_length = np.int32(length + 2 * pad)
     batch_size, in_channel = np.int32(a.shape[0]), np.int32(a.shape[1])
-    ret = GPUBuffer(ctx, (batch_size, in_channel, padded_length))
-    prgm = cl.Program(ctx, """
+    ret = GPUBuffer(ctx.cl_ctx, (batch_size, in_channel, padded_length))
+    prgm = cl.Program(ctx.cl_ctx, """
         __kernel void pad1d(__global const float *a, __global float *res, const int batch_size,
                             const int in_channel, const int padded_length, const int length,
                             const int pad) {
@@ -281,15 +267,15 @@ def pad1d_op(ctx, queue, a, pad, length):
         }
     """).build()
 
-    prgm.pad1d(queue, [batch_size, in_channel, padded_length], None, a.cl, ret.cl,
+    prgm.pad1d(ctx.cl_queue, [batch_size, in_channel, padded_length], None, a.cl, ret.cl,
                batch_size, in_channel, padded_length, np.int32(length), np.int32(pad))
     return ret
 
-def pad2d_op(ctx, queue, a, pad, im_height, im_width):
+def pad2d_op(ctx, a, pad, im_height, im_width):
     padded_height, padded_width = np.int32(im_height + 2 * pad), np.int32(im_width + 2 * pad)
     batch_size, in_channel = np.int32(a.shape[0]), np.int32(a.shape[1])
-    ret = GPUBuffer(ctx, (batch_size, in_channel, padded_height, padded_width))
-    prgm = cl.Program(ctx, """
+    ret = GPUBuffer(ctx.cl_ctx, (batch_size, in_channel, padded_height, padded_width))
+    prgm = cl.Program(ctx.cl_ctx, """
         __kernel void pad2d(__global const float *a, __global float *res, const int batch_size, 
                             const int in_channel, const int padded_height, const int padded_width,
                             const int im_height, const int im_width, const int pad) {
@@ -306,20 +292,20 @@ def pad2d_op(ctx, queue, a, pad, im_height, im_width):
         }
     """).build()
     
-    prgm.pad2d(queue, [batch_size * in_channel, padded_height, padded_width], 
+    prgm.pad2d(ctx.cl_queue, [batch_size * in_channel, padded_height, padded_width], 
                None, a.cl, ret.cl, batch_size, in_channel, padded_height, padded_width,
                np.int32(im_height), np.int32(im_width), np.int32(pad))
     return ret
 
-def conv1d_op(ctx, queue, a, weight, stride, output_length):
+def conv1d_op(ctx, a, weight, stride, output_length):
     batch_size, stride = np.int32(a.shape[0]), np.int32(stride)
     output_length = np.int32(output_length)
     num_filters, in_channel = np.int32(weight.shape[0]), np.int32(weight.shape[1])
     kernel_length = np.int32(weight.shape[2])
     length = np.int32(a.shape[2])
 
-    ret = GPUBuffer(ctx, (batch_size, num_filters, output_length))
-    prgm = cl.Program(ctx, """
+    ret = GPUBuffer(ctx.cl_ctx, (batch_size, num_filters, output_length))
+    prgm = cl.Program(ctx.cl_ctx, """
         __kernel void conv1d(__global const float *input, __global const float *weight,
                              __global float *output, const int kernel_length, const int num_filters, const int in_channel,
                              const int out_length, const int length, const int stride) {
@@ -341,20 +327,20 @@ def conv1d_op(ctx, queue, a, weight, stride, output_length):
         }
     """).build()
 
-    prgm.conv1d(queue, [batch_size, num_filters, output_length], None, a.cl, weight.cl, 
+    prgm.conv1d(ctx.cl_queue, [batch_size, num_filters, output_length], None, a.cl, weight.cl, 
                 ret.cl, kernel_length, num_filters, in_channel, np.int32(output_length), length, 
                 stride)
     return ret
 
-def conv2d_op(ctx, queue, a, weight, stride, output_height, output_width):
+def conv2d_op(ctx, a, weight, stride, output_height, output_width):
     batch_size, stride = np.int32(a.shape[0]), np.int32(stride)
     output_height, output_width = np.int32(output_height), np.int32(output_width)
     num_filters, in_channel = np.int32(weight.shape[0]), np.int32(weight.shape[1])
     kernel_height, kernel_width  = np.int32(weight.shape[2]), np.int32(weight.shape[3])
     im_height, im_width = np.int32(a.shape[2]), np.int32(a.shape[3])
 
-    ret = GPUBuffer(ctx, (batch_size, num_filters, output_height, output_width))
-    prgm = cl.Program(ctx, """
+    ret = GPUBuffer(ctx.cl_ctx, (batch_size, num_filters, output_height, output_width))
+    prgm = cl.Program(ctx.cl_ctx, """
         __kernel void conv2d(__global const float *input, __global const float *weight,
                              __global float *output, const int kernel_height, const int kernel_width, const int num_filters, 
                              const int in_channel, const int out_height, const int out_width, const int im_height, 
@@ -382,321 +368,464 @@ def conv2d_op(ctx, queue, a, weight, stride, output_height, output_width):
         }
     """).build()
 
-    prgm.conv2d(queue, [batch_size * num_filters, output_height, output_width], None, a.cl, weight.cl,
+    prgm.conv2d(ctx.cl_queue, [batch_size * num_filters, output_height, output_width], None, a.cl, weight.cl,
                 ret.cl, kernel_height, kernel_width, num_filters, in_channel, output_height, output_width, im_height,
                 im_width, stride)
     return ret
 
 
-# *************************************
-# *********** Forward passes **********
-# *************************************
-
-def squeeze_forward(ctx, queue, a, axis):
-    in_shape = np.array(a.shape)
-    out_shape = np.delete(in_shape, axis).astype(np.int32)
-    return GPUBuffer(ctx, out_shape, hostbuf=a.data)
-
-def unsqueeze_forward(ctx, queue, a, axis):
-    in_shape = np.array(a.shape)
-    out_shape = np.insert(in_shape, axis, 1).astype(np.int32)
-    return GPUBuffer(ctx, out_shape, hostbuf=a.data)
+class OneHot(Function):
+    @staticmethod
+    def forward(ctx, input, num_classes):
+        return one_hot_encoding(ctx, input, num_classes)
     
-def add_forward(ctx, queue, a, b):
-    return element_wise_binary_op(ctx, queue, 'a+b', a, b)
+    @staticmethod
+    def backward(ctx, grad_output):
+        raise NotImplementedError
 
-def mul_forward(ctx, queue, a, b):
-    return element_wise_binary_op(ctx, queue, 'a*b', a, b)
 
-def matmul_forward(ctx, queue, a, b):
-    return matmul_op(ctx, queue, a, b)
+class Squeeze(Function):
+    @staticmethod
+    def forward(ctx, input, axis=-1):
+        ctx.save_for_backward(axis)
+        in_shape = np.array(input.shape)
+        out_shape = np.delete(in_shape, axis).astype(np.int32)
+        return GPUBuffer(ctx.cl_ctx, out_shape, hostbuf=input)
+    
+    @staticmethod
+    def backward(ctx, grad_output):
+        axis = ctx.saved_tensors
+        in_shape = np.array(grad_output.shape)
+        out_shape = np.insert(in_shape, axis, 1).astype(np.int32)
+        return GPUBuffer(ctx.cl_ctx, out_shape, hostbuf=grad_output)
 
-def log_forward(ctx, queue, a):
-    out = unary_op(ctx, queue, 'log(a)', a)
-    return out
 
-def exp_forward(ctx, queue, a):
-    return unary_op(ctx, queue, 'exp(a)', a)
+class Unsqueeze(Function):
+    @staticmethod
+    def forward(ctx, input, axis=-1):
+        in_shape = np.array(input.shape)
+        out_shape = np.insert(in_shape, axis, 1).astype(np.int32)
+        ctx.save_for_backward(axis)
+        return GPUBuffer(ctx.cl_ctx, out_shape, hostbuf=input)
+    
+    @staticmethod
+    def backward(ctx, grad_output):
+        axis = ctx.saved_tensors
+        in_shape = np.array(grad_output.shape)
+        out_shape = np.delete(in_shape, axis).astype(np.int32)
+        return GPUBuffer(ctx.cl_ctx, out_shape, hostbuf=grad_output)
 
-def neg_forward(ctx, queue, a):
-    return unary_op(ctx, queue, '-a', a)
 
-def pow_forward(ctx, queue, a, exp):
-    return unary_op(ctx, queue, f'pow(a, (float){exp})', a)
+class Add(Function):
+    @staticmethod
+    def forward(ctx, a, b):
+        ctx.save_for_backward(a.shape, b.shape)
+        return element_wise_binary_op(ctx, 'a+b', a, b)
+    
+    @staticmethod
+    def backward(ctx, grad_output):
+        a_shape, b_shape = ctx.saved_tensors
+        grad_a = unbroadcast(ctx, grad_output, a_shape)
+        grad_b = unbroadcast(ctx, grad_output, b_shape)
+        return grad_a, grad_b
+    
 
-def relu_forward(ctx, queue, a):
-    return unary_op(ctx, queue, 'max(a, (float)0.)', a)
+class Mul(Function):
+    @staticmethod
+    def forward(ctx, a, b):
+        ctx.save_for_backward(a, b)
+        return element_wise_binary_op(ctx, 'a*b', a, b)
+    
+    @staticmethod
+    def backward(ctx, grad_output):
+        a, b = ctx.saved_tensors
+        grad_a = element_wise_binary_op(ctx, 'a*b', grad_output, b)
+        grad_b = element_wise_binary_op(ctx, 'a*b', grad_output, a)
+        
+        grad_a = unbroadcast(ctx, grad_a, a.shape)
+        grad_b = unbroadcast(ctx, grad_b, b.shape)
+        return grad_a, grad_b 
 
-def sigmoid_forward(ctx, queue, a):
-    return unary_op(ctx, queue, '1.0 / (1 + exp(-a))', a)
 
-def tanh_forward(ctx, queue, a):
-    return unary_op(ctx, queue, '(exp(a) - exp(-a)) / (exp(a) + exp(-a))', a)
+class MatMul(Function):
+    @staticmethod
+    def forward(ctx, a, b):
+        ctx.save_for_backward(a, b)
+        return matmul_op(ctx, a, b)
+    
+    @staticmethod
+    def backward(ctx, grad_output):
+        a, b = ctx.saved_tensors
+        aT = perm_axis_op(ctx, a)
+        bT = perm_axis_op(ctx, b)
+        grad_a = matmul_op(ctx, grad_output, bT)
+        grad_b = matmul_op(ctx, aT, grad_output)
+        return grad_a, grad_b
+    
 
-def slice_forward(ctx, queue, a, indices):
-    return inner_slice(ctx, queue, a, indices)
+class Log(Function):
+    @staticmethod
+    def forward(ctx, input):
+        ctx.save_for_backward(input)
+        return unary_op(ctx, 'log(a)', input)
+    
+    @staticmethod
+    def backward(ctx, grad_output):
+        input = ctx.saved_tensors[0]
+        return element_wise_binary_op(ctx, 'a/b', grad_output, input)
 
-def transpose_forward(ctx, queue, a):
-    return perm_axis_op(ctx, queue, a, order=(1, 0))
 
-def reshape_forward(ctx, queue, a, shape):
-    shape = tuple(-np.prod(a.shape) // np.prod(shape) if s == -1 else s for s in shape)
-    return GPUBuffer(ctx, shape, hostbuf=a.data)
+class Exp(Function):
+    @staticmethod
+    def forward(ctx, input):
+        ctx.save_for_backward(input)
+        return unary_op(ctx, 'exp(a)', input)
+    
+    @staticmethod
+    def backward(ctx, grad_output):
+        input = ctx.saved_tensors[0]
+        return element_wise_binary_op(ctx, 'a * exp(b)', grad_output, input)
 
-def max_forward(ctx, queue, a, axis):
-    return reduce_op(ctx, queue, 'out = max(a, out)', 'out',
-                     a, axis=axis, keepdims=False, start='-INFINITY')
 
-def min_forward(ctx, queue, a, axis):
-    return reduce_op(ctx, queue, 'out = min(a, out)', 'out',
-                     a, axis=axis, keepdims=False, start='+INFINITY')
+class Neg(Function):
+    @staticmethod
+    def forward(ctx, input):
+        return unary_op(ctx, '-a', input)
 
-def sum_forward(ctx, queue, a, axis):
-    return reduce_op(ctx, queue, 'out += a', 'out', 
-                     a, axis=axis, keepdims=False)
+    @staticmethod
+    def backward(ctx, grad_output):
+        return unary_op(ctx, '-a', grad_output)
 
-def conv1d_forward(ctx, queue, a, weight, stride):
-    batch_size, in_channel, length = a.shape
-    num_filters, _, kernel_length = weight.shape
-    output_length = get_conv1d_output_size(length, kernel_length, stride, 0)
 
-    out = conv1d_op(ctx, queue, a, weight, stride, output_length)
-    return out
+class Pow(Function):
+    @staticmethod
+    def forward(ctx, input, power):
+        ctx.save_for_backward(input, power)
+        return element_wise_binary_op(ctx, 'pow(a,b)', input, power)
+    
+    @staticmethod
+    def backward(ctx, grad_output):
+        input, power = ctx.saved_tensors
+        
+        grad_input = element_wise_binary_op(ctx, 'a*b', grad_output,
+                     element_wise_binary_op(ctx, 'b * (pow((float)a, (float)(b-1.0)))', input, power))
+        grad_power = element_wise_binary_op(ctx, 'a*b', grad_output,
+                     element_wise_binary_op(ctx, 'pow(a, (float)b) * log(a);', input, power))
 
-def conv2d_forward(ctx, queue, a, weight, stride):
-    batch_size, in_channel, im_height, im_width = a.shape
-    num_filters, _, kernel_height, kernel_width = weight.shape
+        grad_input = unbroadcast(ctx, grad_input, input.shape)
+        grad_power = unbroadcast(ctx, grad_power, power.shape)
 
-    output_height, output_width = get_conv2d_output_size(im_height, im_width,
-        (kernel_height, kernel_width), stride, 0)
+        return grad_input, grad_power
 
-    out = conv2d_op(ctx, queue, a, weight, stride, output_height, output_width)
-    return out
 
-# *************************************
-# ********** Backward passes **********
-# *************************************
+class ReLU(Function):
+    @staticmethod
+    def forward(ctx, input):
+        ctx.save_for_backward(input)
+        return unary_op(ctx, 'max(a, (float)0.)', input)
+    
+    @staticmethod
+    def backward(ctx, grad_output):
+        input = ctx.saved_tensors[0]
+        return element_wise_binary_op(ctx, 'a*(b>=0)', grad_output, input)
 
-def squeeze_backward(ctx, queue, grad_output, axis):
-    in_shape = np.array(grad_output.shape)
-    out_shape = np.insert(in_shape, axis, 1).astype(np.int32)
-    return GPUBuffer(ctx, out_shape, hostbuf=grad_output.data)
 
-def unsqueeze_backward(ctx, queue, grad_output, axis):
-    in_shape = np.array(grad_output.shape)
-    out_shape = np.delete(in_shape, axis).astype(np.int32)
-    return GPUBuffer(ctx, out_shape, hostbuf=grad_output.data)
+class Sigmoid(Function):
+    @staticmethod
+    def forward(ctx, input):
+        ctx.save_for_backward(input)
+        return unary_op(ctx, '1.0 / (1.0 + exp(-a))', input)
+    
+    @staticmethod
+    def backward(ctx, grad_output):
+        input = ctx.saved_tensors[0]
+        return element_wise_binary_op(ctx, 'a*(exp(-b) / pow((1 + exp(-b)), 2))', 
+                                      grad_output, input)
 
-def add_backward(ctx, queue, grad_output, a_shape, b_shape):
-    return unbroadcast(ctx, queue, grad_output, a_shape), unbroadcast(ctx, queue, grad_output, b_shape) 
 
-def mul_backward(ctx, queue, grad_output, a, b):
-    grad_a = element_wise_binary_op(ctx, queue, 'a*b', grad_output, b)
-    grad_b = element_wise_binary_op(ctx, queue, 'a*b', grad_output, a)
-    return unbroadcast(ctx, queue, grad_a, a.shape), unbroadcast(ctx, queue, grad_b, b.shape)
+class Tanh(Function):
+    @staticmethod
+    def forward(ctx, input):
+        ctx.save_for_backward(input)
+        return unary_op(ctx, '(exp(a) - exp(-a)) / (exp(a) + exp(-a))', input)
+    
+    @staticmethod
+    def backward(ctx, grad_output):
+        input = ctx.saved_tensors[0]
+        return element_wise_binary_op(ctx, 'a*(1 - pow(exp(b) - exp(-b), 2) / pow(exp(b) + exp(-b), 2))', 
+                                      grad_output, input)
+        
 
-def matmul_backward(ctx, queue, grad_output, a, b):
-    aT = perm_axis_op(ctx, queue, a)
-    bT = perm_axis_op(ctx, queue, b)
-    grad_a = matmul_op(ctx, queue, grad_output, bT)
-    grad_b = matmul_op(ctx, queue, aT, grad_output)
-    return grad_a, grad_b
+class Slice(Function):
+    @staticmethod
+    def forward(ctx, input, indices=None):
+        ctx.save_for_backward(input.shape)
+        return inner_slice(ctx, input, indices)
+    
+    @staticmethod
+    def backward(ctx, grad_output):
+        shape = ctx.saved_tensors[0]
+        indices = [(0 - p[0], grad_output.shape[i] + (shape[i] - p[1])) for i, p in enumerate(ctx.indices)]
+        return inner_slice(ctx, grad_output, indices)
 
-def log_backward(ctx, queue, grad_output, a):
-    return element_wise_binary_op(ctx, queue, 'a/b', grad_output, a)
 
-def exp_backward(ctx, queue, grad_output, a):
-    return element_wise_binary_op(ctx, queue, 'a * exp(b)', grad_output, a)
+class Transpose(Function):
+    @staticmethod
+    def forward(ctx, input):
+        return perm_axis_op(ctx, input, order=(1, 0))
+    
+    @staticmethod
+    def backward(ctx, grad_output):
+        return perm_axis_op(ctx, grad_output)
 
-def neg_backward(ctx, queue, grad_output):
-    return unary_op(ctx, queue, '-a', grad_output)
 
-def pow_backward(ctx, queue, grad_output, a, exp):
-    return element_wise_binary_op(ctx, queue, f'a * {exp} * pow(b, (float){exp-1})', grad_output, a)
+class Reshape(Function):
+    @staticmethod
+    def forward(ctx, input, shape):
+        ctx.save_for_backward(input.shape)
+        shape = tuple(-np.prod(input.shape) // np.prod(shape) if s == -1 else s for s in shape)
+        return GPUBuffer(ctx.cl_ctx, shape, hostbuf=input)
 
-def relu_backward(ctx, queue, grad_output, a):
-    return element_wise_binary_op(ctx, queue, 'a*(b>=0)', grad_output, a)
-
-def sigmoid_backward(ctx, queue, grad_output, a):
-    return element_wise_binary_op(ctx, queue, 'a*(exp(-b) / pow((1 + exp(-b)), 2))', 
-                                  grad_output, a)
-
-def tanh_backward(ctx, queue, grad_output, a):
-    return element_wise_binary_op(ctx, queue, 'a*(1 - pow(exp(b) - exp(-b), 2) / pow(exp(b) + exp(-b), 2))', 
-                                  grad_output, a)
-
-def slice_backward(ctx, queue, grad_output, shape, fwd_indices):
-    indices = [(0 - p[0], grad_output.shape[i] + (shape[i] - p[1])) for i, p in enumerate(fwd_indices)]
-    return inner_slice(ctx, queue, grad_output, indices)
-
-def transpose_backward(ctx, queue, grad_output):
-    return perm_axis_op(ctx, queue, grad_output)
-
-def reshape_backward(ctx, queue, grad_output, shape):
-    new_shape = tuple([-np.prod(grad_output.shape) // np.prod(shape) 
+    @staticmethod
+    def backward(ctx, grad_output):
+        shape = ctx.saved_tensors[0]
+        new_shape = tuple([-np.prod(grad_output.shape) // np.prod(shape) 
                        if s == -1 else s for s in shape])
-    assert np.prod(new_shape) == np.prod(shape), "Inconsistent array reshape size"
-    return GPUBuffer(ctx, new_shape, hostbuf=grad_output)
+        assert np.prod(new_shape) == np.prod(shape), "Inconsistent array reshape size"
+        return GPUBuffer(ctx.cl_ctx, new_shape, hostbuf=grad_output)
 
-def max_backward(ctx, queue, grad_output, inp, out, axis):
-    shape = [1 if axis is None or i in axis else inp.shape[i] for i in range(len(inp.shape))]
-    ret2 = element_wise_binary_op(ctx, queue, "1.0*(a==b)", inp, GPUBuffer(ctx, shape, out))
-    div = reduce_op(ctx, queue, "out += a", "out+1e-10", ret2, axis=axis)
-    ret3 = element_wise_binary_op(ctx, queue, "a/b", ret2, GPUBuffer(ctx, shape, div))
-    return element_wise_binary_op(ctx, queue, 'a*b', ret3, GPUBuffer(ctx, shape, grad_output))
 
-def min_backward(ctx, queue, grad_output, inp, out, axis):
-    shape = [1 if axis is None or i in axis else inp.shape[i] for i in range(len(inp.shape))]
-    ret2 = element_wise_binary_op(ctx, queue, "1.0*(a==b)", inp, GPUBuffer(ctx, shape, out))
-    div = reduce_op(ctx, queue, "out += a", "out+1e-10", ret2, axis=axis)
-    ret3 = element_wise_binary_op(ctx, queue, "a/b", ret2, GPUBuffer(ctx, shape, div))
-    return element_wise_binary_op(ctx, queue, 'a*b', ret3, GPUBuffer(ctx, shape, grad_output))
+class Max(Function):
+    @staticmethod
+    def forward(ctx, input, axis=None):
+        axis = [axis] if type(axis) == int else axis
+        out = reduce_op(ctx, 'out = max(a, out)', 'out',
+                        input, axis=axis, start='-INFINITY')
+        ctx.save_for_backward(input, out, axis)
 
-def sum_backward(ctx, queue, grad_output, a, axis):
-    axis = [axis] if type(axis) == int else axis
-    shape = [1 if axis is None or i in axis else a.shape[i] for i in range(len(a.shape))]
-    output = GPUBuffer(ctx, shape, hostbuf=grad_output)
-    return element_wise_binary_op(ctx, queue, 'a+b', output, GPUBuffer(ctx, a.shape))
+        if axis is not None:
+            out.shape = tuple([input.shape[i] for i in range(len(input.shape)) if i not in axis])
 
-def conv1d_backward(ctx, queue, grad_output, x, weight, stride):
-    batch_size, _, out_length = grad_output.shape
-    num_filters, _, kernel_length = weight.shape
-    _, in_channel, in_length = x.shape
+        return out 
+    
+    @staticmethod
+    def backward(ctx, grad_output):
+        input, out, axis = ctx.saved_tensors
+        shape = [1 if axis is None or i in axis else input.shape[i] for i in range(len(input.shape))]
+        ret2 = element_wise_binary_op(ctx, "1.0*(a==b)", input, GPUBuffer(ctx.cl_ctx, shape, out))
+        div = reduce_op(ctx, "out += a", "out+1e-10", ret2, axis=axis)
+        ret3 = element_wise_binary_op(ctx, "a/b", ret2, GPUBuffer(ctx.cl_ctx, shape, div))
+        return element_wise_binary_op(ctx, 'a*b', ret3, GPUBuffer(ctx.cl_ctx, shape, grad_output))
 
-    grad_x = GPUBuffer(ctx, shape=x.shape)
-    grad_weight = GPUBuffer(ctx, shape=weight.shape)
 
-    prgm_grad_x = cl.Program(ctx, """
-        __kernel void conv_backward_x(__global const float *weight, __global const float *grad_output, __global float *grad_x, const int kernel_length,
-                                      const int num_filters, const int in_channel, const int out_length, const int in_length, const int stride,
-                                      const int batch_size) {
+class Min(Function):
+    @staticmethod
+    def forward(ctx, input, axis=None):
+        axis = [axis] if type(axis) == int else axis
+        out = reduce_op(ctx, 'out = min(a, out)', 'out',
+                        input, axis=axis, start='+INFINITY')
+        ctx.save_for_backward(input, out, axis)
 
-            int batch = get_global_id(0);
-            int channel = get_global_id(1);
+        if axis is not None:
+            out.shape = tuple([input.shape[i] for i in range(len(input.shape)) if i not in axis])
 
-            for(int x = 0; x < out_length; x++) {
-                for(int kx = 0; kx < kernel_length; kx++) {
+        return out
+    
+    @staticmethod
+    def backward(ctx, grad_output):
+        input, out, axis = ctx.saved_tensors
+        shape = [1 if axis is None or i in axis else input.shape[i] for i in range(len(input.shape))]
+        ret2 = element_wise_binary_op(ctx, "1.0*(a==b)", input, GPUBuffer(ctx.cl_ctx, shape, out))
+        div = reduce_op(ctx, "out += a", "out+1e-10", ret2, axis=axis)
+        ret3 = element_wise_binary_op(ctx, "a/b", ret2, GPUBuffer(ctx.cl_ctx, shape, div))
+        return element_wise_binary_op(ctx, 'a*b', ret3, GPUBuffer(ctx.cl_ctx, shape, grad_output))
 
-                    float sum = 0.0;
 
-                    for(int f = 0; f < num_filters; f++) {
-                        sum += grad_output[batch * num_filters * out_length + f * out_length + x] * \
-                            weight[f * in_channel * kernel_length + channel * kernel_length + kx];
-                    } 
+class Sum(Function):
+    @staticmethod
+    def forward(ctx, input, axis=None):
+        axis = [axis] if type(axis) == int else axis
+        ctx.save_for_backward(input, axis)
+        ret = reduce_op(ctx, 'out += a', 'out', input, axis=axis)
+        if axis is not None:
+            ret.shape = tuple([input.shape[i] for i in range(len(input.shape)) if i not in axis])
+        
+        return ret
+        
+    @staticmethod
+    def backward(ctx, grad_output):
+        input, axis = ctx.saved_tensors
+        axis = [axis] if type(axis) == int else axis
+        shape = [1 if axis is None or i in axis else input.shape[i] for i in range(len(input.shape))]
+        output = GPUBuffer(ctx.cl_ctx, shape, hostbuf=grad_output)
+        return element_wise_binary_op(ctx, 'a+b', output, GPUBuffer(ctx.cl_ctx, input.shape))
 
-                    grad_x[batch * in_channel * in_length + channel * in_length + x * stride + kx] += sum;
+
+class Conv1d(Function):
+    @staticmethod
+    def forward(ctx, input, weight, stride=1):
+        ctx.save_for_backward(input, weight, stride)
+        batch_size, in_channel, length = input.shape
+        num_filters, _, kernel_length = weight.shape
+        output_length = get_conv1d_output_size(length, kernel_length, stride, 0)
+        out = conv1d_op(ctx, input, weight, stride, output_length)
+        return out
+    
+    @staticmethod
+    def backward(ctx, grad_output):
+        input, weight, stride = ctx.saved_tensors
+
+        batch_size, _, out_length = grad_output.shape
+        num_filters, _, kernel_length = weight.shape
+        _, in_channel, in_length = input.shape
+
+        grad_x = GPUBuffer(ctx.cl_ctx, shape=input.shape)
+        grad_weight = GPUBuffer(ctx.cl_ctx, shape=weight.shape)
+
+        prgm_grad_x = cl.Program(ctx.cl_ctx, """
+            __kernel void conv_backward_x(__global const float *weight, __global const float *grad_output, __global float *grad_x, const int kernel_length,
+                                        const int num_filters, const int in_channel, const int out_length, const int in_length, const int stride,
+                                        const int batch_size) {
+
+                int batch = get_global_id(0);
+                int channel = get_global_id(1);
+
+                for(int x = 0; x < out_length; x++) {
+                    for(int kx = 0; kx < kernel_length; kx++) {
+
+                        float sum = 0.0;
+
+                        for(int f = 0; f < num_filters; f++) {
+                            sum += grad_output[batch * num_filters * out_length + f * out_length + x] * \
+                                weight[f * in_channel * kernel_length + channel * kernel_length + kx];
+                        } 
+
+                        grad_x[batch * in_channel * in_length + channel * in_length + x * stride + kx] += sum;
+                    }
                 }
+
+
             }
+        """).build()
 
+        prgm_grad_weight = cl.Program(ctx.cl_ctx, """
+            __kernel void conv_backward_weight(__global const float *x_tensor, __global const float *grad_output, __global float *grad_weight,
+                                            const int kernel_length, const int num_filters, const int in_channel, const int out_length, 
+                                            const int in_length, const int stride, const int batch_size) {
 
-        }
-    """).build()
+                int filter = (get_global_id(0) / in_channel) % num_filters;
+                int channel = get_global_id(0) % in_channel;
+                int col = get_global_id(1);
 
-    prgm_grad_weight = cl.Program(ctx, """
-        __kernel void conv_backward_weight(__global const float *x_tensor, __global const float *grad_output, __global float *grad_weight,
-                                           const int kernel_length, const int num_filters, const int in_channel, const int out_length, 
-                                           const int in_length, const int stride, const int batch_size) {
+                float sum = 0.0;
 
-            int filter = (get_global_id(0) / in_channel) % num_filters;
-            int channel = get_global_id(0) % in_channel;
-            int col = get_global_id(1);
-
-            float sum = 0.0;
-
-            for(int x = 0; x < out_length; x++) {
-                for(int b = 0; b < batch_size; b++) {
-                    sum += grad_output[b * num_filters * out_length + filter * out_length + x] * \
-                        x_tensor[b * in_channel * in_length + channel * in_length + x * stride + col];
+                for(int x = 0; x < out_length; x++) {
+                    for(int b = 0; b < batch_size; b++) {
+                        sum += grad_output[b * num_filters * out_length + filter * out_length + x] * \
+                            x_tensor[b * in_channel * in_length + channel * in_length + x * stride + col];
+                    }
                 }
+                grad_weight[get_global_id(0) * kernel_length + col] = sum;
+
             }
-            grad_weight[get_global_id(0) * kernel_length + col] = sum;
+        """).build()
 
-        }
-    """).build()
+        grad_x_args = (weight.cl, grad_output.cl, grad_x.cl, np.int32(kernel_length), np.int32(num_filters), 
+                    np.int32(in_channel), np.int32(out_length), np.int32(in_length), np.int32(stride), 
+                    np.int32(batch_size))
+        
+        grad_w_args = (input.cl, grad_output.cl, grad_weight.cl, np.int32(kernel_length), np.int32(num_filters), 
+                    np.int32(in_channel), np.int32(out_length), np.int32(in_length), np.int32(stride), 
+                    np.int32(batch_size))
 
-    grad_x_args = (weight.cl, grad_output.cl, grad_x.cl, np.int32(kernel_length), np.int32(num_filters), 
-                   np.int32(in_channel), np.int32(out_length), np.int32(in_length), np.int32(stride), 
-                   np.int32(batch_size))
-    
-    grad_w_args = (x.cl, grad_output.cl, grad_weight.cl, np.int32(kernel_length), np.int32(num_filters), 
-                   np.int32(in_channel), np.int32(out_length), np.int32(in_length), np.int32(stride), 
-                   np.int32(batch_size))
+        prgm_grad_x.conv_backward_x(ctx.cl_queue, [batch_size, in_channel], None, *grad_x_args)
+        prgm_grad_weight.conv_backward_weight(ctx.cl_queue, [num_filters * in_channel, kernel_length], None, *grad_w_args)
 
-    prgm_grad_x.conv_backward_x(queue, [batch_size, in_channel], None, *grad_x_args)
-    prgm_grad_weight.conv_backward_weight(queue, [num_filters * in_channel, kernel_length], None, *grad_w_args)
+        return grad_x, grad_weight
 
-    return grad_x, grad_weight
-    
-    
 
-def conv2d_backward(ctx, queue, grad_output, x, weight, stride):
-    batch_size, _, out_height, out_width = grad_output.shape
-    num_filters, _, kernel_height, kernel_width = weight.shape
-    _, in_channel, im_height, im_width = x.shape
+class Conv2d(Function):
+    @staticmethod
+    def forward(ctx, input, weight, stride=1):
+        ctx.save_for_backward(input, weight, stride)
+        batch_size, in_channel, im_height, im_width = input.shape
+        num_filters, _, kernel_height, kernel_width = weight.shape
+        output_height, output_width = get_conv2d_output_size(im_height, im_width,
+            (kernel_height, kernel_width), stride, 0)
+        out = conv2d_op(ctx, input, weight, stride, output_height, output_width)
+        return out
 
-    grad_x = GPUBuffer(ctx, shape=x.shape)
-    grad_weight = GPUBuffer(ctx, shape=weight.shape)
+    @staticmethod
+    def backward(ctx, grad_output):
+        input, weight, stride = ctx.saved_tensors
 
-    prgm_grad_x = cl.Program(ctx, """
-        __kernel void conv_backward_x(__global const float *weight, __global const float *grad_output, __global float *grad_x, const int kernel_height,
-                                      const int kernel_width, const int num_filters, const int in_channel, const int out_width, const int out_height,
-                                      const int im_width, const int im_height, const int stride, const int batch_size) {
+        batch_size, _, out_height, out_width = grad_output.shape
+        num_filters, _, kernel_height, kernel_width = weight.shape
+        _, in_channel, im_height, im_width = input.shape
 
-            int batch = get_global_id(0);
-            int channel = get_global_id(1);
+        grad_x = GPUBuffer(ctx.cl_ctx, shape=input.shape)
+        grad_weight = GPUBuffer(ctx.cl_ctx, shape=weight.shape)
 
-            for(int y = 0; y < out_height; y++) {
-                for(int x = 0; x < out_width; x++) {
-                    for(int ky = 0; ky < kernel_height; ky++) {
-                        for(int kx = 0; kx < kernel_width; kx++) {
-                            
-                            float sum = 0.0;
+        prgm_grad_x = cl.Program(ctx.cl_ctx, """
+            __kernel void conv_backward_x(__global const float *weight, __global const float *grad_output, __global float *grad_x, const int kernel_height,
+                                        const int kernel_width, const int num_filters, const int in_channel, const int out_width, const int out_height,
+                                        const int im_width, const int im_height, const int stride, const int batch_size) {
 
-                            for(int f = 0; f < num_filters; f++) {
-                                sum += grad_output[batch * num_filters * out_height * out_width + f * out_height * out_width + y * out_width + x] * \
-                                    weight[f * in_channel * kernel_height * kernel_width + channel * kernel_height * kernel_width + ky * kernel_width + kx];
+                int batch = get_global_id(0);
+                int channel = get_global_id(1);
+
+                for(int y = 0; y < out_height; y++) {
+                    for(int x = 0; x < out_width; x++) {
+                        for(int ky = 0; ky < kernel_height; ky++) {
+                            for(int kx = 0; kx < kernel_width; kx++) {
+                                
+                                float sum = 0.0;
+
+                                for(int f = 0; f < num_filters; f++) {
+                                    sum += grad_output[batch * num_filters * out_height * out_width + f * out_height * out_width + y * out_width + x] * \
+                                        weight[f * in_channel * kernel_height * kernel_width + channel * kernel_height * kernel_width + ky * kernel_width + kx];
+                                }
+
+                                grad_x[batch * in_channel * im_height * im_width + channel * im_height * im_width + (y * stride + ky) * im_width + x * stride + kx] += sum;
                             }
-
-                            grad_x[batch * in_channel * im_height * im_width + channel * im_height * im_width + (y * stride + ky) * im_width + x * stride + kx] += sum;
                         }
                     }
                 }
             }
-        }
-    """).build()
+        """).build()
 
-    prgm_grad_weight = cl.Program(ctx, """
-        __kernel void conv_backward_weight(__global const float *x_tensor, __global const float *grad_output, __global float *grad_weight,
-                                           const int kernel_height, const int kernel_width, const int num_filters, const int in_channel,
-                                           const int out_height, const int out_width, const int im_height, const int im_width, const int stride,
-                                           const int batch_size) {
+        prgm_grad_weight = cl.Program(ctx.cl_ctx, """
+            __kernel void conv_backward_weight(__global const float *x_tensor, __global const float *grad_output, __global float *grad_weight,
+                                            const int kernel_height, const int kernel_width, const int num_filters, const int in_channel,
+                                            const int out_height, const int out_width, const int im_height, const int im_width, const int stride,
+                                            const int batch_size) {
 
-            int filter = (get_global_id(0) / in_channel) % num_filters;
-            int channel = get_global_id(0) % in_channel;
-            int row = get_global_id(1);
-            int col = get_global_id(2);
+                int filter = (get_global_id(0) / in_channel) % num_filters;
+                int channel = get_global_id(0) % in_channel;
+                int row = get_global_id(1);
+                int col = get_global_id(2);
 
-            float sum = 0.0;
+                float sum = 0.0;
 
-            for(int y = 0; y < out_height; y++) {
-                for(int x = 0; x < out_width; x++) {
-                    for(int b = 0; b < batch_size; b++) {
-                        sum += grad_output[b * num_filters * out_height * out_width + filter * out_height * out_width + y * out_width + x] * \
-                            x_tensor[b * in_channel * im_width * im_height + channel * im_height * im_width + im_width * (y * stride + row) + x * stride + col];
+                for(int y = 0; y < out_height; y++) {
+                    for(int x = 0; x < out_width; x++) {
+                        for(int b = 0; b < batch_size; b++) {
+                            sum += grad_output[b * num_filters * out_height * out_width + filter * out_height * out_width + y * out_width + x] * \
+                                x_tensor[b * in_channel * im_width * im_height + channel * im_height * im_width + im_width * (y * stride + row) + x * stride + col];
+                        }
                     }
                 }
+                grad_weight[get_global_id(0)*kernel_height*kernel_width + row * kernel_width + col] = sum;
             }
-            grad_weight[get_global_id(0)*kernel_height*kernel_width + row * kernel_width + col] = sum;
-        }
-    """).build()
+        """).build()
 
-    grad_x_args = (weight.cl, grad_output.cl, grad_x.cl, np.int32(kernel_height), np.int32(kernel_width), np.int32(num_filters), np.int32(in_channel),
-                   np.int32(out_width), np.int32(out_height), np.int32(im_width), np.int32(im_height), np.int32(stride), np.int32(batch_size))
+        grad_x_args = (weight.cl, grad_output.cl, grad_x.cl, np.int32(kernel_height), np.int32(kernel_width), np.int32(num_filters), np.int32(in_channel),
+                    np.int32(out_width), np.int32(out_height), np.int32(im_width), np.int32(im_height), np.int32(stride), np.int32(batch_size))
 
-    grad_w_args = (x.cl, grad_output.cl, grad_weight.cl, np.int32(kernel_height), np.int32(kernel_width), np.int32(num_filters), np.int32(in_channel),
-                   np.int32(out_height), np.int32(out_width), np.int32(im_height), np.int32(im_width), np.int32(stride), np.int32(batch_size))
+        grad_w_args = (input.cl, grad_output.cl, grad_weight.cl, np.int32(kernel_height), np.int32(kernel_width), np.int32(num_filters), np.int32(in_channel),
+                    np.int32(out_height), np.int32(out_width), np.int32(im_height), np.int32(im_width), np.int32(stride), np.int32(batch_size))
 
-    prgm_grad_x.conv_backward_x(queue, [batch_size, in_channel], None, *grad_x_args)
-    prgm_grad_weight.conv_backward_weight(queue, [num_filters * in_channel, kernel_height, kernel_width], None, *grad_w_args)
+        prgm_grad_x.conv_backward_x(ctx.cl_queue, [batch_size, in_channel], None, *grad_x_args)
+        prgm_grad_weight.conv_backward_weight(ctx.cl_queue, [num_filters * in_channel, kernel_height, kernel_width], None, *grad_w_args)
 
-    return grad_x, grad_weight
+        return grad_x, grad_weight

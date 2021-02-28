@@ -1,29 +1,15 @@
 from typing import Union
+from collections import defaultdict
 import warnings
+import inspect
+from functools import partialmethod
+import functools
 
 import numpy as np
 from nanograd.viz.comp_graph import ForwardGraphVisualizer, BackwardGraphVisualizer
 
 from nanograd.device import Device
-from nanograd import autograd_engine
-from nanograd.autograd_engine import Function
-from nanograd.nn.ops_gpu import GPUBuffer
-
-import nanograd.nn.ops_cpu as ops_cpu
-import nanograd.nn.ops_gpu as ops_gpu
-from nanograd.nn.conv_ops import (get_conv1d_output_size, get_conv2d_output_size, 
-                                  get_im2col_indices, col2im)
-
-try:
-    import pyopencl as cl
-    PYOPENCL_AVAILABLE = True
-
-except ImportError:
-    PYOPENCL_AVAILABLE = False
-    warnings.warn("PyOpenCL is not available on this computer. Can't use \
-                   parallel computing. Please install it to move comptutations \
-                   to move the GPU.")
-
+from nanograd.nn.buffer import GPUBuffer
 
 cl_ctx, cl_queue = None, None
 
@@ -45,6 +31,7 @@ def get_gpu_context_and_queue():
 
 
 class Tensor:
+    ops = defaultdict(dict) # Adding to the class several operations
     """
         Tensor is the basic operator object of Nanograd. It is 
         a wrapper class around NumPy array. 
@@ -80,23 +67,21 @@ class Tensor:
     def __init__(self, 
                  data:Union[np.ndarray, GPUBuffer], 
                  requires_grad:bool=False, 
-                 is_leaf:bool=True, 
                  is_parameter:bool=False,
                  device:Device=Device.CPU,
                  name:str='no_name',
                  op:str=None) -> None:
         self.data = self._move_data(data, device)
-        self.requires_grad, self.is_leaf = requires_grad, is_leaf
+        self.requires_grad = requires_grad
         self.is_parameter = is_parameter
 
         self.device = device
 
-        self.grad, self.grad_fn = None, None
+        self.grad = None
+        self.ctx = None
+
         self.name, self.op = name, op
         self.children = []
-
-        if not self.requires_grad and not self.is_leaf:
-            raise Exception("A non-leaf node must be gradient-enabled")
     
     @property
     def shape(self) -> tuple:
@@ -105,6 +90,10 @@ class Tensor:
     @property
     def dtype(self) -> np.dtype:
         return self.data.dtype
+
+    @property
+    def T(self):
+        return self.transpose()
     
     # ****************************************
     # ***** Class methods / Initializers *****
@@ -189,6 +178,7 @@ class Tensor:
             if cl_ctx is None:
                 get_gpu_context_and_queue()
             return GPUBuffer(cl_ctx, data.shape, hostbuf=data)
+
         return data
 
     def to(self, device:Device):
@@ -212,35 +202,52 @@ class Tensor:
                              pip install pyopencl to benefit from GPU-accelerated computations.")
         self.to(Device.GPU)
         return self
-        
 
     # ****************************************
     # *************** Backprop ***************
     # ****************************************
 
-    def backward(self) -> None:
-        """
-            Initiates backpropagation.
+    @functools.lru_cache()
+    def build_graph_topology(self):
+        def dfs(node, visited, nodes):
+            visited.add(node)
+            if node.ctx:
+                for parent in node.ctx.parents:
+                    if parent not in visited:
+                        dfs(parent, visited, nodes)
+                nodes.append(node)
+            return nodes
+        return dfs(self, set(), list())
+        
+    def backward(self):
+        if self.shape != (1,):
+            raise Exception("Can't initiate backprop from a non scalar-valued tensor.")
 
-            ..note::
-                The gradient of the loss with respect to the parameters is a multi-dimensional array filled
-                with ones.
-        """
-        if not self.requires_grad:
-            raise Exception("Can't initiate backprop from gradient-disabled tensor")
-        autograd_engine.backward(self.grad_fn, Tensor.ones(self.shape, device=self.device))
-    
+        self.grad = Tensor.ones(self.shape, device=self.device, requires_grad=False)
+
+        for node in reversed(self.build_graph_topology()):
+            assert node.grad is not None, 'Got an unitialized gradient node'
+
+            gradients = node.ctx.backward(node.ctx, node.grad.data)
+
+            if len(node.ctx.parents) == 1:
+                gradients = [gradients]
+            
+            for tensor, grad in zip(node.ctx.parents, gradients):
+                if grad is not None: 
+                    assert grad.shape == tensor.shape, f"Mismatched tensor and grad shape. Got {grad.shape} and {tensor.shape}. \
+                                                         Tensor and gradient should have the same shape."
+                    if tensor.grad is None:
+                        tensor.grad = Tensor(grad, device=self.device, requires_grad=False)
+                    else:
+                        tensor.grad += Tensor(grad, device=self.device, requires_grad=False)
+
     def copy(self):
         """Creates a copy of the tensor"""
         return Tensor(self.data, device=self.device)
 
-    # ****************************************
-    # *********** Magic functions ************
-    # ****************************************
-    
     def __str__(self):
         return f"<NanoTensor({str(self.data)}, " + \
-               f"grad_fn={self.grad_fn.__class__.__name__  if self.grad_fn else None}), " + \
                f"name={self.name}," + \
                f"device={self.device}>"
     
@@ -277,118 +284,54 @@ class Tensor:
         
         indices += [(0, shape[i]) for i in range(len(args), len(self.shape))]
         
-        return Slice.apply(self, indices, cl_ctx=cl_ctx, cl_queue=cl_queue)
+        return self.slice(indices=indices)
 
     # ****************************************
     # ********** Basic operations ************
     # ****************************************
-        
-    def __add__(self, other):
-        if isinstance(other, (int, float)):
-            other = Tensor(other)
-        return Add.apply(self, other, cl_ctx=cl_ctx, cl_queue=cl_queue)
-
-    def __radd__(self, other):
-        return self + other
-    
-    def __neg__(self):
-        return Neg.apply(self, cl_ctx=cl_ctx, cl_queue=cl_queue)
-    
-    def __sub__(self, other):
-        return self + (- other)
-    
-    def __rsub__(self, other):
-        return -self + other
-
-    def __pow__(self, exp):
-        return Pow.apply(self, exp, cl_ctx=cl_ctx, cl_queue=cl_queue)
-    
-    def __mul__(self, other):
-        if isinstance(other, (int, float)):
-            other = Tensor(other)
-        return Mul.apply(self, other, cl_ctx=cl_ctx, cl_queue=cl_queue)
-    
-    def __rmul__(self, other):
-        return self * other
     
     def __truediv__(self, other):
         return self * (other ** -1.0)
-    
-    def __matmul__(self, other):
-        return MatMul.apply(self, other, cl_ctx=cl_ctx, cl_queue=cl_queue)
-    
-    # ****************************************
-    # ******** Advanced operations ***********
-    # ****************************************
-    
-    def sum(self, axis=None):
-        return Sum.apply(self, axis, cl_ctx=cl_ctx, cl_queue=cl_queue)
-    
-    def mean(self, axis=None, keepdims:bool=False):
-        out = self.sum(axis=axis)
-        coeff = np.prod(out.shape) / np.prod(self.shape)
-        return out * Tensor(coeff, device=self.device)
-    
-    def reshape(self, shape:tuple):
-        return Reshape.apply(self, shape, cl_ctx=cl_ctx, cl_queue=cl_queue)
-    
-    def T(self):
-        return Transpose.apply(self, cl_ctx=cl_ctx, cl_queue=cl_queue)
 
-    def max(self, axis=None):
-        return Max.apply(self, axis, cl_ctx=cl_ctx, cl_queue=cl_queue)
-    
-    def min(self, axis=None):
-        return Min.apply(self, axis, cl_ctx=cl_ctx, cl_queue=cl_queue)
-    
-    def log(self):
-        return Log.apply(self, cl_ctx=cl_ctx, cl_queue=cl_queue)
-    
-    def exp(self):
-        return Exp.apply(self, cl_ctx=cl_ctx, cl_queue=cl_queue)
+    def __sub__(self, other):
+        return self + (-other)
+
+    def __rsub__(self, other):
+        return -self + other
 
     def sqrt(self):
-        return self ** (1/2)
+        return self ** 0.5
+    
+    # ****************************************
+    # ******** Reduction operations **********
+    # ****************************************
+    
+    def mean(self, axis=None):
+        out = self.sum(axis=axis)
+        coeff = np.prod(out.shape) / np.prod(self.shape)
+        return out * coeff
 
     # ****************************************
     # ****** Miscellaneous operations ********
     # ****************************************
-    
-    def one_hot(self, num_classes):
-        return OneHot.apply(self, num_classes, cl_ctx=cl_ctx, cl_queue=cl_queue)
-
-    def unsqueeze(self, axis):
-        return Unsqueeze.apply(self, axis, cl_ctx=cl_ctx, cl_queue=cl_queue)
-    
-    def squeeze(self, axis):
-        return Squeeze.apply(self, axis, cl_ctx=cl_ctx, cl_queue=cl_queue)
 
     def flatten(self):
         dim1, dim2 = self.shape[0], np.prod(self.shape[1:])
-        out = self.reshape((dim1, dim2))
+        out = self.reshape(shape=(dim1, dim2))
         return out
 
     # ****************************************
     # ******** Activation functions **********
     # ****************************************
-
-    def relu(self):
-        return ReLU.apply(self, cl_ctx=cl_ctx, cl_queue=cl_queue)
-    
-    def sigmoid(self):
-        return Sigmoid.apply(self, cl_ctx=cl_ctx, cl_queue=cl_queue)
-
-    def tanh(self):
-        return Tanh.apply(self, cl_ctx=cl_ctx, cl_queue=cl_queue)
     
     def log_softmax(self):
         batch_size, num_classes = self.shape
-        a = self.max(axis=1).reshape((batch_size, 1)) # Log-exp trick
-        out = self - a - (self - a).exp().sum(axis=1).unsqueeze(0).log().reshape((batch_size, 1))
+        a = self.max(axis=1).reshape(shape=[batch_size, 1]) # Log-exp trick
+        out = self - a - (self - a).exp().sum(axis=1).log().reshape(shape=[batch_size, 1])
         return out
 
     # ****************************************
-    # ********* Conv/Pool operations *********
+    # ********* Pool operations *********
     # ****************************************
 
     def _pool1d(self, field_length:int):
@@ -485,23 +428,6 @@ class Tensor:
         """
         return self[:, :, -pad[2]:int(self.shape[2])+pad[3], -pad[0]:int(self.shape[3])+pad[1]]
 
-    def conv1d(self, weight, stride:int):
-        """1d convolution
-        
-        Args:
-            weight (Tensor): Filter weight (out_channel, in_channel, kernel_length)
-            stride (int): Stride of the convolution operation
-        """
-        return Conv1d.apply(self, weight, stride, cl_ctx=cl_ctx, cl_queue=cl_queue)
-    
-    def conv2d(self, weight, stride=1):
-        """2d convolution
-        
-        Args:
-            weight (Tensor): Filter weight (out_channel, in_channel, *kernel_size)
-            stride (int): Stride of the convolution operation
-        """
-        return Conv2d.apply(self, weight, stride, cl_ctx=cl_ctx, cl_queue=cl_queue)
 
     # ****************************************
     # ************ Visualization *************
@@ -528,690 +454,65 @@ class Tensor:
         return visualizer.visualize(self, rankdir=rankdir)
 
 
-# ****************************************
-# ************** Functional **************
-# ****************************************
+def register(name, operation, device=Device.CPU):
+    """Registers operation to the Tensor class
 
-class OneHot(Function):
-    @staticmethod
-    def forward(ctx, a, num_classes):
-        requires_grad = a.requires_grad
-        is_leaf = not a.requires_grad
+       More precisely, it populates the ops dictionary by adding CPU and 
+       GPU operations.
 
-        if a.device == Device.CPU:
-            out = ops_cpu.one_hot_encoding(a.data, num_classes)
-        else:
-            out = ops_gpu.one_hot_encoding(ctx.cl_ctx, ctx.cl_queue, a.data, num_classes)
-        
-        return Tensor(out, device=a.device, requires_grad=requires_grad,
-                      is_leaf=is_leaf)
+       In short:
+            ops[device][name] = function
+
+    Args:
+        name (str): Key representing the function stored in the ops dictionary
+        function (class, inherits from Function): Value in the dictionary
+        device ([type], optional): The device on which the operation is execute. Defaults to Device.CPU.
+    """
+
+    Tensor.ops[device][name] = operation
     
-    @staticmethod
-    def backward(ctx, grad_output):
-        # No backward pass since one-hot encoding is applied to a target
-        # tensor whose gradient is None
-        return None
+    def dispatch(*args, **kwargs):
+        """Modifies the operation arguments and adds the operation 
+           to the ops dictionary
 
-
-class Unsqueeze(Function):
-    @staticmethod
-    def forward(ctx, a, axis):
-        requires_grad = a.requires_grad
-        is_leaf = not a.requires_grad
-
-        ctx.axis = axis
-
-        if a.device == Device.CPU:
-            out = ops_cpu.unsqueeze_forward(a.data, axis)
-        else:
-            out = ops_gpu.unsqueeze_forward(ctx.cl_ctx, ctx.cl_queue, a, axis)
-
-        return Tensor(out, device=a.device, requires_grad=requires_grad,
-                      is_leaf=is_leaf)
-    
-    @staticmethod
-    def backward(ctx, grad_output):
-        axis = ctx.axis
-
-        if grad_output.device == Device.CPU:
-            grad = ops_cpu.unsqueeze_backward(grad_output.data, axis)
-        else:
-            grad = ops_gpu.unsqueeze_backward(ctx.cl_ctx, ctx.cl_queue, grad_output, axis)
+        Returns:
+            function: Forward pass (apply) of the operation
+        """
+        input = [arg for arg in args if isinstance(arg, Tensor)][0]
+        args = [Tensor(np.array([arg], dtype=input.dtype), device=input.device) 
+                if not isinstance(arg, Tensor) else arg for arg in args]
         
-        return Tensor(grad, device=grad_output.device), None
+        op = Tensor.ops[input.device][name]
+        op.cl_ctx, op.cl_queue, op.device = cl_ctx, cl_queue, input.device # For GPU support
+        return op.apply(op, *args, **kwargs)
 
+    if name in ['add', 'mul', 'pow', 'matmul', 'neg']:
+        setattr(Tensor, f"__{name}__", dispatch)
+        if name != 'neg':
+            setattr(Tensor, f"__r{name}__", lambda self, x: dispatch(x, self))
+    else:
+        setattr(Tensor, name, dispatch)
 
-class Squeeze(Function):
-    @staticmethod
-    def forward(ctx, a, axis):
-        is_squeezed = False
-        requires_grad = a.requires_grad
-        is_leaf = not a.requires_grad
 
-        if a.shape[axis] == 1: # If dimension > 1, can't squeeze
-            is_squeezed = True
-            if a.device == Device.CPU:
-                out = ops_cpu.squeeze_forward(a.data, axis)
-            else:
-                out = ops_gpu.squeeze_forward(ctx.cl_ctx, ctx.cl_queue, a, axis)
-        else:
-            is_squeezed = False
-            out = a.data
+def register_ops(namespace, device=Device.CPU):
+    for name, cls in inspect.getmembers(namespace, inspect.isclass):
+        if name[0] != "_":  
+            register(name.lower(), cls, device=device)
 
-        ctx.axis = axis
-        ctx.is_squeezed = is_squeezed
-        
-        return Tensor(out, device=a.device, requires_grad=requires_grad,
-                      is_leaf=is_leaf)
-    
-    @staticmethod
-    def backward(ctx, grad_output):
-        axis, is_squeezed = ctx.axis, ctx.is_squeezed
 
-        if is_squeezed:
-            if grad_output.device == Device.CPU:
-                grad = ops_cpu.squeeze_backward(grad_output.data, axis)
-            else:
-                grad = ops_gpu.squeeze_backward(ctx.cl_ctx, ctx.cl_queue, grad_output, axis)
-        else:
-            grad = grad_output.data
-        
-        return Tensor(grad, device=grad_output.device), None
+from nanograd.nn import ops_cpu
 
+register_ops(ops_cpu)
 
-class Slice(Function):
-    @staticmethod
-    def forward(ctx, a, indices=None):
-        ctx.shape, ctx.indices = a.shape, indices
+try:
+    import pyopencl as cl
+    from nanograd.nn import ops_gpu
+    register_ops(ops_gpu, device=Device.GPU)
 
-        requires_grad = a.requires_grad
-        is_leaf = not a.requires_grad
+    PYOPENCL_AVAILABLE = True
 
-        if a.device == Device.CPU:
-            out_data = ops_cpu.slice_forward(a.data, indices)
-        else:
-            out_data = ops_gpu.slice_forward(ctx.cl_ctx, ctx.cl_queue, a.data, indices)
-        
-        out = Tensor(out_data, requires_grad=requires_grad, 
-                            is_leaf=is_leaf, device=a.device)
-        out.children = [a]
-        out.op = 'slice'
-
-        return out
-    
-    @staticmethod
-    def backward(ctx, grad_output):
-        shape, fwd_indices = ctx.shape, ctx.indices
-
-        if grad_output.device == Device.CPU:
-            grad = ops_cpu.slice_backward(grad_output.data, shape, fwd_indices)
-        else:
-            grad = ops_gpu.slice_backward(ctx.cl_ctx, ctx.cl_queue, grad_output.data, shape, fwd_indices)
-        
-        return Tensor(grad, device=grad_output.device), None
-
-
-class Transpose(Function):
-    @staticmethod
-    def forward(ctx, a):
-        if len(a.shape) > 2:
-            raise Exception("Arg for Transpose must be 1D or 2D tensor: {}".format(a.shape))
-        
-        requires_grad = a.requires_grad
-        is_leaf = not requires_grad
-
-        if a.device == Device.CPU:
-            out_data = ops_cpu.transpose_forward(a.data)
-        else:
-            out_data = ops_gpu.transpose_forward(ctx.cl_ctx, ctx.cl_queue, a.data)
-
-        out = Tensor(out_data, requires_grad=requires_grad, 
-                     is_leaf=is_leaf, device=a.device)
-        out.children = [a]
-        out.op = 'transpose'
-        return out
-
-    @staticmethod
-    def backward(ctx, grad_output):
-
-        if grad_output.device == Device.CPU:
-            grad = ops_cpu.transpose_backward(grad_output.data)
-        else:
-            grad = ops_gpu.transpose_backward(ctx.cl_ctx, ctx.cl_queue, grad_output.data)
-
-        return Tensor(grad, device=grad_output.device), None
-
-
-class Reshape(Function):
-    @staticmethod
-    def forward(ctx, a, shape):
-        ctx.shape = a.shape
-        requires_grad = a.requires_grad
-        is_leaf = not requires_grad
-
-        if a.device == Device.CPU:
-            out_data = ops_cpu.reshape_forward(a.data, shape)
-        else:
-            out_data = ops_gpu.reshape_forward(ctx.cl_ctx, ctx.cl_queue, a, shape)
-        
-        out = Tensor(out_data, requires_grad=requires_grad, 
-                     is_leaf=is_leaf, device=a.device)
-        
-        assert np.prod(out.shape) == np.prod(a.shape), "Inconsistent array reshape size"
-
-        out.children = [a]
-        out.op = 'reshape'
-        return out
-
-    @staticmethod
-    def backward(ctx, grad_output):
-        if grad_output.device == Device.CPU:
-            grad = ops_cpu.reshape_backward(grad_output.data, ctx.shape)
-        else:
-            grad = ops_gpu.reshape_backward(ctx.cl_ctx, ctx.cl_queue, 
-                                            grad_output.data, ctx.shape)
-
-        return Tensor(grad, device=grad_output.device), None
-
-
-class Max(Function):
-    @staticmethod
-    def forward(ctx, a, axis=None):
-        axis = [axis] if type(axis) == int else axis
-
-        ctx.save_for_backward(a)
-
-        requires_grad = a.requires_grad
-        is_leaf = not requires_grad
-
-        if a.device == Device.CPU:
-            out_data = ops_cpu.max_forward(a.data, axis)
-        else:
-            out_data = ops_gpu.max_forward(ctx.cl_ctx, ctx.cl_queue, a.data, axis)
-        
-        ctx.axis, ctx.out = axis, out_data
-
-        out = Tensor(out_data, requires_grad=requires_grad, 
-                     is_leaf=is_leaf, device=a.device)
-        out.children = [a]
-        out.op = 'max'
-
-        return out
-    
-    @staticmethod
-    def backward(ctx, grad_output):
-        axis, out = ctx.axis, ctx.out
-        inp = ctx.saved_tensors[0]
-
-        if grad_output.device == Device.CPU:
-            grad = ops_cpu.max_backward(grad_output, inp.data, out, axis)
-        else:
-            grad = ops_gpu.max_backward(ctx.cl_ctx, ctx.cl_queue, grad_output.data, 
-                                        inp.data, out, axis)
-            
-        return Tensor(grad, device=grad_output.device), None
-
-
-class Min(Function):
-    @staticmethod
-    def forward(ctx, a, axis=None):
-        axis = [axis] if type(axis) == int else axis
-
-        ctx.save_for_backward(a)
-
-        requires_grad = a.requires_grad
-        is_leaf = not requires_grad
-
-        if a.device == Device.CPU:
-            out_data = ops_cpu.min_forward(a.data, axis)
-        else:
-            out_data = ops_gpu.min_forward(ctx.cl_ctx, ctx.cl_queue, a.data, axis)
-        
-        ctx.axis, ctx.out = axis, out_data
-
-        out = Tensor(out_data, requires_grad=requires_grad, 
-                     is_leaf=is_leaf, device=a.device)
-        out.children = [a]
-        out.op = 'min'
-
-        return out
-    
-    @staticmethod
-    def backward(ctx, grad_output):
-        axis, out = ctx.axis, ctx.out
-        inp = ctx.saved_tensors[0]
-
-        if grad_output.device == Device.CPU:
-            grad = ops_cpu.min_backward(grad_output, inp.data, out, axis)
-        else:
-            grad = ops_gpu.min_backward(ctx.cl_ctx, ctx.cl_queue, grad_output.data, 
-                                        inp.data, out, axis)
-
-        return Tensor(grad, device=grad_output.device), None
-
-
-class Log(Function):
-    @staticmethod
-    def forward(ctx, a):
-        ctx.save_for_backward(a)
-        requires_grad = a.requires_grad
-    
-        if a.device == Device.CPU:
-            out_data = ops_cpu.log_forward(a.data)
-        else:
-            out_data = ops_gpu.log_forward(ctx.cl_ctx, ctx.cl_queue, a.data)
-
-        out = Tensor(out_data, requires_grad=requires_grad, 
-                     is_leaf=not requires_grad, device=a.device)
-        out.children = [a]   
-        out.op = 'log'                
-        return out
-
-    @staticmethod
-    def backward(ctx, grad_output):
-        a = ctx.saved_tensors[0]
-
-        if grad_output.device == Device.CPU:
-            grad_a = ops_cpu.log_backward(grad_output.data, a.data)
-        else:
-            grad_a = ops_gpu.log_backward(ctx.cl_ctx, ctx.cl_queue, grad_output.data, a.data)
-
-        return Tensor(grad_a, device=grad_output.device), None
-    
-
-class Exp(Function):
-    @staticmethod
-    def forward(ctx, a):   
-        ctx.save_for_backward(a)
-        requires_grad = a.requires_grad
-
-        if a.device == Device.CPU:
-            out_data = ops_cpu.exp_forward(a.data)
-        else:
-            out_data = ops_gpu.exp_forward(ctx.cl_ctx, ctx.cl_queue, a.data)
-
-        out = Tensor(out_data, requires_grad=requires_grad, 
-                            is_leaf=not requires_grad, device=a.device)
-        out.children = [a]
-        out.op = 'exp'
-        return out
-    
-    @staticmethod
-    def backward(ctx, grad_output):
-        a = ctx.saved_tensors[0]
-
-        if grad_output.device == Device.CPU:
-            grad_a = ops_cpu.exp_backward(grad_output.data, a.data)
-        else:
-            grad_a = ops_gpu.exp_backward(ctx.cl_ctx, ctx.cl_queue, grad_output.data, a.data)
-
-        return Tensor(grad_a, device=grad_output.device), None
-
-
-class Add(Function):
-    @staticmethod
-    def forward(ctx, a, b):
-        if a.device != b.device:
-            if a.device == Device.CPU and b.device == Device.GPU:
-                a.gpu()
-            elif a.device == Device.GPU and b.device == Device.CPU:
-                b.gpu()
-
-        ctx.save_for_backward(a, b)
-        requires_grad = a.requires_grad or b.requires_grad
-
-        if a.device == Device.CPU:
-            out_data = ops_cpu.add_forward(a.data, b.data)
-        else:
-            out_data = ops_gpu.add_forward(ctx.cl_ctx, ctx.cl_queue, a.data, b.data)
-
-        out = Tensor(out_data, requires_grad=requires_grad, 
-                            is_leaf=not requires_grad, device=a.device)
-        out.children = [a, b]
-        out.op = 'add'
-        return out
-
-    @staticmethod
-    def backward(ctx, grad_output):
-        a, b = ctx.saved_tensors
-
-        if grad_output.device == Device.CPU:
-            grad_a, grad_b = ops_cpu.add_backward(grad_output.data, a.shape, b.shape)
-        else:
-            grad_a, grad_b = ops_gpu.add_backward(ctx.cl_ctx, ctx.cl_queue, grad_output.data,
-                                                  a.shape, b.shape)
-        return Tensor(grad_a, device=grad_output.device), Tensor(grad_b, device=grad_output.device)
-
-
-class Sum(Function):
-    @staticmethod
-    def forward(ctx, a, axis):
-        ctx.axis = axis
-        ctx.save_for_backward(a)
-
-        requires_grad = a.requires_grad
-        is_leaf = not requires_grad
-
-        if a.device == Device.CPU:
-            out_data = ops_cpu.sum_forward(a.data, axis)
-        else:
-            out_data = ops_gpu.sum_forward(ctx.cl_ctx, ctx.cl_queue, a.data, axis)
-
-        out = Tensor(out_data, requires_grad=requires_grad, 
-                     is_leaf=is_leaf, device=a.device)
-        out.children = [a]
-        out.op = 'sum'
-        return out
-    
-    @staticmethod
-    def backward(ctx, grad_output):
-        axis = ctx.axis
-        a = ctx.saved_tensors[0]
-
-        if grad_output.device == Device.CPU:
-            grad = ops_cpu.sum_backward(grad_output.data, a.data, axis)
-        else:
-            grad = ops_gpu.sum_backward(ctx.cl_ctx, ctx.cl_queue, grad_output.data, a.data, axis)
-        
-        return Tensor(grad, device=grad_output.device), None, None
-
-
-class Neg(Function):
-    @staticmethod
-    def forward(ctx, a):
-        requires_grad = a.requires_grad
-
-        if a.device == Device.CPU:
-            out_data = ops_cpu.neg_forward(a.data)
-        else:
-            out_data = ops_gpu.neg_forward(ctx.cl_ctx, ctx.cl_queue, a.data)
-
-        out = Tensor(out_data, requires_grad=requires_grad, 
-                            is_leaf=not a.requires_grad, device=a.device)
-        out.children = [a]
-        out.op = 'neg'
-        return out
-    
-    @staticmethod
-    def backward(ctx, grad_output):
-        if grad_output.device == Device.CPU:
-            grad = ops_cpu.neg_backward(grad_output.data)
-        else:
-            grad = ops_gpu.neg_backward(ctx.cl_ctx, ctx.cl_queue, grad_output.data)
-        return Tensor(grad, device=grad_output.device), None
-
-
-class MatMul(Function):
-    @staticmethod
-    def forward(ctx, a, b):
-        if a.shape[1] != b.shape[0]:
-            raise Exception(f"Shapes don't match: {a.shape}, {b.shape}")
-
-        if a.device != b.device:
-            if a.device == Device.CPU and b.device == Device.GPU:
-                a.gpu()
-            elif a.device == Device.GPU and b.device == Device.CPU:
-                b.gpu()
-
-        ctx.save_for_backward(a, b)
-        requires_grad = a.requires_grad or b.requires_grad
-        is_leaf = not requires_grad
-
-        if a.device == Device.CPU:
-            out_data = ops_cpu.matmul_forward(a.data, b.data)
-        else:
-            out_data = ops_gpu.matmul_forward(ctx.cl_ctx, ctx.cl_queue, a.data, b.data)
-
-        out = Tensor(out_data, requires_grad=requires_grad, 
-                            is_leaf=is_leaf, device=a.device)
-        out.children = [a, b]
-        out.op = 'matmul'
-        return out
-    
-    @staticmethod
-    def backward(ctx, grad_output):
-        a, b = ctx.saved_tensors
-
-        if grad_output.device == Device.CPU:
-            grad_a, grad_b = ops_cpu.matmul_backward(grad_output.data, a.data, b.data)
-        else:
-            grad_a, grad_b = ops_gpu.matmul_backward(ctx.cl_ctx, ctx.cl_queue, 
-                                                     grad_output.data, a.data, b.data)
-        return Tensor(grad_a, device=grad_output.device), Tensor(grad_b, device=grad_output.device)
-
-
-class Pow(Function):
-    @staticmethod
-    def forward(ctx, a, exp):
-        if not isinstance(exp, (int, float)):
-            raise Exception("Power can only be float or int")
-
-        ctx.save_for_backward(a)
-        ctx.exp = exp
-
-        requires_grad = a.requires_grad
-
-        if a.device == Device.CPU:
-            out_data = ops_cpu.pow_forward(a.data, exp)
-        else:
-            out_data = ops_gpu.pow_forward(ctx.cl_ctx, ctx.cl_queue, a.data, exp)
-
-        out = Tensor(out_data, requires_grad=requires_grad, 
-                            is_leaf=not requires_grad, device=a.device)
-        out.children = [a]
-        out.op = 'pow'
-        return out
-    
-    @staticmethod
-    def backward(ctx, grad_output):
-        exp = ctx.exp
-        a = ctx.saved_tensors[0]
-
-        if grad_output.device == Device.CPU:
-            grad_a = ops_cpu.pow_backward(grad_output.data, a.data, exp)
-        else:
-            grad_a = ops_gpu.pow_backward(ctx.cl_ctx, ctx.cl_queue, grad_output.data, a.data, exp)
-
-        return Tensor(grad_a, device=grad_output.device), None
-
-
-class Mul(Function):
-    @staticmethod
-    def forward(ctx, a, b):
-        if a.device != b.device:
-            if a.device == Device.CPU and b.device == Device.GPU:
-                a.gpu()
-            elif a.device == Device.GPU and b.device == Device.CPU:
-                b.gpu()
-
-        ctx.save_for_backward(a, b)
-        requires_grad = a.requires_grad or b.requires_grad
-
-        if a.device == Device.CPU:
-            out_data = ops_cpu.mul_forward(a.data, b.data)
-        else:
-            out_data = ops_gpu.mul_forward(ctx.cl_ctx, ctx.cl_queue, a.data, b.data)
-
-        out = Tensor(out_data, requires_grad=requires_grad, 
-                     is_leaf=not requires_grad, device=a.device)
-        out.children = [a, b]
-        out.op = 'mul'
-        return out
-    
-    @staticmethod
-    def backward(ctx, grad_output):
-        a, b = ctx.saved_tensors
-
-        if grad_output.device == Device.CPU:
-            grad_a, grad_b = ops_cpu.mul_backward(grad_output.data, a.data, b.data)
-        else:
-            grad_a, grad_b = ops_gpu.mul_backward(ctx.cl_ctx, ctx.cl_queue, grad_output.data, a.data, b.data)
-        
-        return Tensor(grad_a, device=grad_output.device), Tensor(grad_b, device=grad_output.device)
-
-
-class ReLU(Function):
-    @staticmethod
-    def forward(ctx, a):
-        ctx.save_for_backward(a)
-
-        requires_grad = a.requires_grad
-        is_leaf = not requires_grad
-
-        if a.device == Device.CPU:
-            out_data = ops_cpu.relu_forward(a.data)
-        else:
-            out_data = ops_gpu.relu_forward(ctx.cl_ctx, ctx.cl_queue, a.data)
-
-        out = Tensor(out_data, requires_grad=requires_grad, 
-                            is_leaf=is_leaf, device=a.device)
-        out.children = [a]
-        out.op = 'relu'
-        return out
-    
-    @staticmethod
-    def backward(ctx, grad_output):
-        a = ctx.saved_tensors[0]
-
-        if grad_output.device == Device.CPU:
-            grad_a = ops_cpu.relu_backward(grad_output.data, a.data)
-        else:
-            grad_a = ops_gpu.relu_backward(ctx.cl_ctx, ctx.cl_queue, grad_output.data, a.data)
-
-        return Tensor(grad_a, device=grad_output.device), None
-
-
-class Sigmoid(Function):
-    @staticmethod
-    def forward(ctx, a):
-        ctx.save_for_backward(a)
-
-        requires_grad = a.requires_grad
-        is_leaf = not requires_grad
-
-        if a.device == Device.CPU:
-            out_data = ops_cpu.sigmoid_forward(a.data)
-        else:
-            out_data = ops_gpu.sigmoid_forward(ctx.cl_ctx, ctx.cl_queue, a.data)
-        
-        out = Tensor(out_data, requires_grad=requires_grad,
-                            is_leaf=is_leaf, device=a.device)
-        out.children = [a]
-        out.op = 'sigmoid'
-        return out
-    
-    @staticmethod
-    def backward(ctx, grad_output):
-        a = ctx.saved_tensors[0]
-
-        if grad_output.device == Device.CPU:
-            grad_a = ops_cpu.sigmoid_backward(grad_output.data, a.data)
-        else:
-            grad_a = ops_gpu.sigmoid_backward(ctx.cl_ctx, ctx.cl_queue, grad_output.data, a.data)
-
-        return Tensor(grad_a, device=grad_output.device), None
-
-
-class Tanh(Function):
-    @staticmethod
-    def forward(ctx, a):
-        ctx.save_for_backward(a)
-
-        requires_grad = a.requires_grad
-        is_leaf = not requires_grad
-
-        if a.device == Device.CPU:
-            out_data = ops_cpu.tanh_forward(a.data)
-        else:
-            out_data = ops_gpu.tanh_forward(ctx.cl_ctx, ctx.cl_queue, a.data)
-        
-        out = Tensor(out_data, requires_grad=requires_grad,
-                            is_leaf=is_leaf, device=a.device)
-        out.children = [a]
-        out.op = 'tanh'
-        return out
-    
-    @staticmethod
-    def backward(ctx, grad_output):
-        a = ctx.saved_tensors[0]
-
-        if grad_output.device == Device.CPU:
-            grad_a = ops_cpu.tanh_backward(grad_output.data, a.data)
-        else:
-            grad_a = ops_gpu.tanh_backward(ctx.cl_ctx, ctx.cl_queue, grad_output.data, a.data)
-
-        return Tensor(grad_a, device=grad_output.device), None
-
-
-class Conv1d(Function):
-    @staticmethod
-    def forward(ctx, x, weight, stride):
-        requires_grad = x.requires_grad
-        is_leaf = not x.requires_grad
-
-        if x.device == Device.CPU:
-            out, x_reshaped = ops_cpu.conv1d_forward(x.data, weight.data, stride)
-            ctx.x_reshaped = x_reshaped
-        else:
-            out = ops_gpu.conv1d_forward(ctx.cl_ctx, ctx.cl_queue, x.data, weight.data, stride)
-        
-        ctx.save_for_backward(x, weight)
-        ctx.stride = stride
-
-        out = Tensor(out, device=x.device, requires_grad=requires_grad, is_leaf=is_leaf)
-        out.children = [x, weight]
-        out.op = 'conv1d'
-        return out
-
-    @staticmethod
-    def backward(ctx, grad_output):
-        x, weight = ctx.saved_tensors
-        stride = ctx.stride
-
-        if grad_output.device == Device.CPU:
-            x_reshaped = ctx.x_reshaped
-            grad_x, grad_weight = ops_cpu.conv1d_backward(grad_output.data, x, x_reshaped, weight.data, stride)
-        else:
-            grad_x, grad_weight = ops_gpu.conv1d_backward(ctx.cl_ctx, ctx.cl_queue, grad_output.data, 
-                                                          x.data, weight.data, stride)
-
-        return Tensor(grad_x, device=grad_output.device), Tensor(grad_weight, device=grad_output.device)
-        
-
-class Conv2d(Function):
-    @staticmethod
-    def forward(ctx, x, weight, stride):
-        requires_grad = x.requires_grad
-        is_leaf = not requires_grad
-
-        if x.device == Device.CPU:
-            out, x_reshaped = ops_cpu.conv2d_forward(x.data, weight.data, stride)
-            ctx.x_reshaped = x_reshaped
-        else:
-            out = ops_gpu.conv2d_forward(ctx.cl_ctx, ctx.cl_queue, x.data, weight.data, stride)
-
-        ctx.save_for_backward(x, weight)
-        ctx.stride = stride
-
-        out = Tensor(out, requires_grad=requires_grad, is_leaf=is_leaf, device=x.device)
-        out.children = [x, weight]
-        out.op = 'conv2d'
-        
-        return out
-    
-    @staticmethod
-    def backward(ctx, grad_output):
-        x, weight = ctx.saved_tensors
-        stride = ctx.stride
-
-        if grad_output.device == Device.CPU:
-            x_reshaped = ctx.x_reshaped
-            grad_x, grad_weight = ops_cpu.conv2d_backward(grad_output.data, x, x_reshaped, weight.data, stride)
-        else:
-            grad_x, grad_weight = ops_gpu.conv2d_backward(ctx.cl_ctx, ctx.cl_queue, grad_output.data, 
-                                                          x.data, weight.data, stride)
-
-        grad_x = Tensor(grad_x, device=grad_output.device)
-        grad_weight = Tensor(grad_weight, device=grad_output.device)
-
-        return grad_x, grad_weight
+except ImportError:
+    PYOPENCL_AVAILABLE = False
+    warnings.warn("PyOpenCL is not available on this computer. Can't use \
+                   parallel computing. Please install it to move comptutations \
+                   to move the GPU.")
